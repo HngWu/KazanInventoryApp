@@ -95,12 +95,22 @@ fun AssetsScreen()
     var endDate by mutableStateOf("")
     val httpgetassets = remember { httpgetassets() }
     fun filterAssets() {
+        if(((searchQuery.isEmpty() || searchQuery.length < 3) && selectedAssetGroup.isEmpty() && selectedDepartment.isEmpty() && startDate.isEmpty() && endDate.isEmpty()))
+        {
+            filteredAssetsList.value = assetsList.value
+
+        }
+        else{
         filteredAssetsList.value = assetsList.value.filter { asset ->
-            (searchQuery.isEmpty() || asset.AssetSN.contains(searchQuery, ignoreCase = true) || asset.AssetName.contains(searchQuery, ignoreCase = true)) &&
+            (searchQuery.isEmpty() || asset.AssetSN.contains(
+                searchQuery,
+                ignoreCase = true
+            ) || asset.AssetName.contains(searchQuery, ignoreCase = true)) &&
                     (selectedAssetGroup.isEmpty() || asset.AssetGroupName == selectedAssetGroup) &&
                     (selectedDepartment.isEmpty() || asset.DepartmentName == selectedDepartment) &&
                     (startDate.isEmpty() || asset.WarrantyDate >= startDate) &&
                     (endDate.isEmpty() || asset.WarrantyDate <= endDate)
+            }
         }
     }
     LaunchedEffect(Unit) {
@@ -120,11 +130,11 @@ fun AssetsScreen()
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            DropDownMenu(listOf("Exploration", "Production", "Transportation", "R&D", "Distribution", "QHSE"), "Department") {
+            DropDownMenu(listOf("Default","Exploration", "Production", "Transportation", "R&D", "Distribution", "QHSE"), "Department") {
                 selectedDepartment = it
                 filterAssets()
             }
-            DropDownMenu(listOf("Toyota Hilux FAF321", "Suction Line 852", "ZENY 3,5CFM Single-Stage 5 Pa Rotary Vane", "Volvo FH16"), "Asset Group") {
+            DropDownMenu(listOf("Default","Toyota Hilux FAF321", "Suction Line 852", "ZENY 3,5CFM Single-Stage 5 Pa Rotary Vane", "Volvo FH16"), "Asset Group") {
                 selectedAssetGroup = it
                 filterAssets()
             }
@@ -144,20 +154,40 @@ fun AssetsScreen()
                 filterAssets()
             }
         }
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = {
-                searchQuery = it
-                if (searchQuery.length > 2) {
-                    filterAssets()
-                }
-            },
-            label = { Text("Search") },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(10.dp))
+        Row (
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ){
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = {
+                    searchQuery = it
+                        filterAssets()
+
+                },
+                label = { Text("Search") },
+                modifier = Modifier.width(300.dp)
+            )
+
+            Spacer(modifier = Modifier.width(10.dp).height(30.dp).padding(5.dp).align(Alignment.CenterVertically))
+            Button(onClick = {
+                searchQuery = ""
+                selectedAssetGroup = ""
+                selectedDepartment = ""
+                startDate = ""
+                endDate = ""
+                filterAssets()
+            }) {
+                Text("Clear")
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+        }
+
         LazyColumn {
-             items(filteredAssetsList.value) { asset ->
+            items(filteredAssetsList.value) { asset ->
                 AssetCard(asset)
             }
         }
@@ -208,7 +238,7 @@ fun DatePickerDocked(identifier: String, selectedDate: String, label: String,onD
     ) {
         OutlinedTextField(
             value = selectedDate,
-            onValueChange = { },
+            onValueChange = {  },
             label = { Text(label) },
             readOnly = true,
             trailingIcon = {
@@ -227,7 +257,7 @@ fun DatePickerDocked(identifier: String, selectedDate: String, label: String,onD
         if (showDatePicker) {
             Popup(
                 onDismissRequest = { showDatePicker = false },
-                alignment = Alignment.TopStart
+                alignment = Alignment.TopStart,
             ) {
                 Box(
                     modifier = Modifier
@@ -237,11 +267,31 @@ fun DatePickerDocked(identifier: String, selectedDate: String, label: String,onD
                         .background(MaterialTheme.colorScheme.surface)
                         .padding(16.dp)
                 ) {
-                    DatePicker(
-                        state = datePickerState,
-                        showModeToggle = false
-                    )
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    val selectedDateMillis = datePickerState.selectedDateMillis
+                                    if (selectedDateMillis != null) {
+                                        onDateSelected(convertMillisToDate(selectedDateMillis))
+                                    }
+                                    showDatePicker = false
+                                }
+                            ) {
+                                Text("OK")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    ) {
+                        DatePicker(state = datePickerState)
+                    }
                 }
+
             }
         }
     }
@@ -291,7 +341,13 @@ fun DropDownMenu(items: List<String>, name: String,onItemSelected: (String) -> U
                 DropdownMenuItem(
                     text = { Text(text = item) },
                     onClick = {
-                        selectedItem = item
+                        if(item == "Default")
+                        {
+                            selectedItem = ""
+                        }
+                        else{
+                            selectedItem = item
+                        }
                         expanded = false
                         onItemSelected(item)
                     }
