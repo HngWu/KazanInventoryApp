@@ -100,6 +100,15 @@ import com.example.kazaninventoryapp.httpservice.httppostasset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import android.util.Base64
+import androidx.compose.ui.platform.LocalContext
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.example.kazaninventoryapp.Models.EditAsset
+import com.example.kazaninventoryapp.Models.UpdateAsset
+import com.example.kazaninventoryapp.httpservice.httpgetassetforedit
+import com.example.kazaninventoryapp.httpservice.httppostupdatedasset
+import java.io.FileOutputStream
+import java.io.IOException
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
@@ -142,662 +151,1059 @@ class MainActivity : ComponentActivity() {
             val navController = rememberNavController()
             NavHost(navController, "Assets") {
                 composable("Assets") { AssetsScreen(navController) }
-                composable("RegisterAssets") {RegisterAssets(navController, context = applicationContext) }
+                composable("RegisterAssets") {
+                    RegisterAssets(
+                        navController,
+                        context = applicationContext
+                    )
+                }
+                composable(
+                    "EditAssets/{assetId}",
+                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                ) { backStackEntry ->
+                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                    EditAssets(navController, context = applicationContext, assetId = assetId)
+
+                }
+            }
+            requestCameraPermission()
+
+        }
+
+
+    }
+
+
+    @Composable
+    fun RegisterAssets(navController: NavController, context: Context) {
+        var assetName by remember { mutableStateOf("") }
+        var department by remember { mutableStateOf("") }
+        var location by remember { mutableStateOf("") }
+        var assetGroup by remember { mutableStateOf("") }
+        var accountableParty by remember { mutableStateOf("") }
+        var assetDescription by remember { mutableStateOf("") }
+        var expiredWarranty by remember { mutableStateOf("") }
+        var assetSN by remember { mutableStateOf("") }
+        var imageUris by remember { mutableStateOf(listOf<Uri>()) }
+        var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
+        var getLocation by remember { mutableStateOf(false) }
+        var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
+        var departmentList by remember {
+            mutableStateOf<List<String>>(
+                listOf(
+                    "Exploration",
+                    "Production",
+                    "Transportation",
+                    "R&D",
+                    "Distribution",
+                    "QHSE"
+                )
+            )
+        }
+
+        var assetGroupList by remember {
+            mutableStateOf<List<String>>(
+                listOf(
+                    "Hydraulic",
+                    "Electrical",
+                    "Mechanical "
+                )
+            )
+        }
+
+
+        val galleryLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetMultipleContents()
+        ) { uris ->
+            if (uris != null) {
+                imageUris = imageUris + uris
             }
         }
-        requestCameraPermission()
-
-    }
-
-
-}
-
-
-
-
-@Composable
-fun RegisterAssets(navController:NavController,context: Context) {
-    var assetName by remember { mutableStateOf("") }
-    var department by remember { mutableStateOf("") }
-    var location by remember { mutableStateOf("") }
-    var assetGroup by remember { mutableStateOf("") }
-    var accountableParty by remember { mutableStateOf("") }
-    var assetDescription by remember { mutableStateOf("") }
-    var expiredWarranty by remember { mutableStateOf("") }
-    var assetSN by remember { mutableStateOf("") }
-    var imageUris by remember { mutableStateOf(listOf<Uri>()) }
-    var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
-    var getLocation by remember { mutableStateOf(false) }
-    var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
-    var departmentList by remember { mutableStateOf<List<String>>(listOf(
-        "Exploration",
-        "Production",
-        "Transportation",
-        "R&D",
-        "Distribution",
-        "QHSE"
-    )) }
-
-    var assetGroupList by remember { mutableStateOf<List<String>>(listOf("Hydraulic", "Electrical", "Mechanical ")) }
-
-
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris ->
-        if (uris != null) {
-            imageUris = imageUris + uris
-        }
-    }
-    var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && cameraImageUri != null) {
-            imageUris = imageUris + cameraImageUri!!
-        }
-    }
-
-    LaunchedEffect(Unit) {
-
-        withContext(Dispatchers.IO)
-        {
-            val httpgetemployees = httpgetemployees()
-            val employees = httpgetemployees.getEmployees()
-            if (employees != null) {
-                employeeList = employees
-        }
-    }
+        var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+        val cameraLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.TakePicture()
+        ) { success ->
+            if (success && cameraImageUri != null) {
+                imageUris = imageUris + cameraImageUri!!
+            }
         }
 
-
-if (getLocation)
-{
         LaunchedEffect(Unit) {
 
             withContext(Dispatchers.IO)
             {
-                val httpgetlocations = httpgetlocations()
-                val locations = httpgetlocations.getLocations(department)
-                if (locations != null) {
-                    locationList = locations
+                val httpgetemployees = httpgetemployees()
+                val employees = httpgetemployees.getEmployees()
+                if (employees != null) {
+                    employeeList = employees
                 }
-                getLocation = false
             }
         }
-    }
-
-    fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
-        val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
-        val departmentPart = departmentId.toString().padStart(2, '0')
-        val assetGroupPart = assetGroupId.toString().padStart(2, '0')
-        val uniquePart = uniqueNumber.toString().padStart(4, '0')
-        assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
-        return "$departmentPart/$assetGroupPart/$uniquePart"
-    }
 
 
-    fun generateImageUri(context: Context): Uri {
-        val imageFile = File(context.getExternalFilesDir(null), "${UUID.randomUUID()}.jpg")
-        return FileProvider.getUriForFile(
-            context,
-            "${context.packageName}.fileprovider",
-            imageFile
-        )
-    }
+        if (getLocation) {
+            LaunchedEffect(Unit) {
 
-    fun getByteArrayFromUri(context: Context, uri: Uri): ByteArray? {
-        return try {
-            val inputStream = context.contentResolver.openInputStream(uri)
-            inputStream?.readBytes()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+                withContext(Dispatchers.IO)
+                {
+                    val httpgetlocations = httpgetlocations()
+                    val locations = httpgetlocations.getLocations(department)
+                    if (locations != null) {
+                        locationList = locations
+                    }
+                    getLocation = false
+                }
+            }
         }
-    }
 
-
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(text = "Register Assets", style = MaterialTheme.typography.bodyLarge)
-        Spacer(modifier = Modifier.height(20.dp))
-        OutlinedTextField(
-            value = assetName,
-            onValueChange = { assetName = it },
-            label = { Text("Asset Name") },
-            modifier = Modifier.width(300.dp)
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(10.dp)
-        ) {
-            DropDownMenu(
-                departmentList, "Department"
-            ) {
-                department = it
-                getLocation = true
-            }
-
-            DropDownMenu(locationList, "Location") {
-                location = it
-            }
-
+        fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
+            val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
+            val departmentPart = departmentId.toString().padStart(2, '0')
+            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
+            val uniquePart = uniqueNumber.toString().padStart(4, '0')
+            assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+            return "$departmentPart/$assetGroupPart/$uniquePart"
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(10.dp)
-        ) {
-            DropDownMenu(
-                assetGroupList, "Asset Group"
-            ) {
-                assetGroup = it
-            }
-            DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
-                accountableParty = it
-            }
 
+
+        fun generateImageUri(context: Context): Uri {
+            val imageFile = File(context.getExternalFilesDir(null), "${UUID.randomUUID()}.jpg")
+            return FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                imageFile
+            )
         }
-        Spacer(modifier = Modifier.height(10.dp))
 
-        OutlinedTextField(
-            value = assetDescription,
-            onValueChange = { assetDescription = it },
-            label = { Text("Asset Description") },
-            modifier = Modifier.width(300.dp),
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(10.dp)
-        ) {
-            DatePickerDocked("startDate", "Start Date", expiredWarranty) {
-                expiredWarranty = it
-
+        fun getByteArrayFromUri(context: Context, uri: Uri): ByteArray? {
+            return try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                inputStream?.readBytes()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
             }
-            Text(text = "Asset SN: \n" + generateAssetSN(
-                departmentList.indexOf(department)+1,
-                assetGroupList.indexOf(assetGroup)+1
-            ))
         }
+
 
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
-            Button(onClick = {
-                galleryLauncher.launch("image/*")
-            }) {
-                Text("Select Images from Device")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(onClick = {
-                try {
-
-
-
-                    val generatedUri = generateImageUri(context)
-                    cameraImageUri = generatedUri
-                    cameraLauncher.launch(generatedUri)
-                }
-                catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
-            }) {
-                Text("Capture Image with Camera")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "Register Assets", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(20.dp))
+            OutlinedTextField(
+                value = assetName,
+                onValueChange = { assetName = it },
+                label = { Text("Asset Name") },
+                modifier = Modifier.width(300.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
-                horizontalArrangement = Arrangement.Absolute.Right,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(10.dp)
             ) {
-                Button(onClick = {
-                    navController.navigate("Assets")
-                }) {
-                    Text("Cancel")
+                DropDownMenu(
+                    departmentList, "Department"
+                ) {
+                    department = it
+                    getLocation = true
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Button(onClick = {
 
-
-
-
-
-                    var imageByteArrays = imageUris.mapNotNull { uri ->
-                        getByteArrayFromUri(context, uri)
-                    }
-
-                    val base64Images = imageByteArrays.map {
-                        Base64.encodeToString(it, Base64.NO_WRAP)
-                    }
-
-                    var asset = createNewAsset(
-                        assetSN,
-                        assetName,
-                        (departmentList.indexOf(department)+1),
-                        location,
-                        employeeList.find { it.FirstName == accountableParty }!!.ID,
-                        (assetGroupList.indexOf(assetGroup)+1),
-                        assetDescription,
-                        expiredWarranty,
-                        base64Images
-                    )
-                    CoroutineScope(Dispatchers.IO).launch {
-                        val httppostasset = httppostasset()
-                        httppostasset.postAsset(asset,
-                            { navController.navigate("Assets") },
-                            { Log.i("kilo", "Asset post failed") }
-                        )
-                    }
-
-
-                }) {
-                    Text("Register")
+                DropDownMenu(locationList, "Location") {
+                    location = it
                 }
+
             }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Display the selected or captured images
-            if (imageUris.isNotEmpty()) {
-                LazyRow {
-                    items(imageUris.size) { index ->
-                        val uri = imageUris[index]
-                        Image(
-                            bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, uri).asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(100.dp)
-                                .padding(8.dp)
-                        )
-                    }
-                }
-            }        }
-        Spacer(modifier = Modifier.height(10.dp))
-
-
-
-    }
-}
-
-
-@SuppressLint("UnrememberedMutableState")
-@Composable
-fun AssetsScreen(navController:NavController,) {
-    var assetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
-    var filteredAssetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedAssetGroup by mutableStateOf("")
-    var selectedDepartment by mutableStateOf("")
-    var startDate by mutableStateOf("")
-    var endDate by mutableStateOf("")
-    val httpgetassets = remember { httpgetassets() }
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
-
-    fun filterAssets() {
-        if (((searchQuery.isEmpty() || searchQuery.length < 3) && selectedAssetGroup.isEmpty() && selectedDepartment.isEmpty() && startDate.isEmpty() && endDate.isEmpty())) {
-            filteredAssetsList.value = assetsList.value
-
-        } else {
-            filteredAssetsList.value = assetsList.value.filter { asset ->
-                (searchQuery.isEmpty() || asset.AssetSN.contains(
-                    searchQuery,
-                    ignoreCase = true
-                ) || asset.AssetName.contains(searchQuery, ignoreCase = true)) &&
-                        (selectedAssetGroup.isEmpty() || asset.AssetGroupName == selectedAssetGroup) &&
-                        (selectedDepartment.isEmpty() || asset.DepartmentName == selectedDepartment) &&
-                        (startDate.isEmpty() || asset.WarrantyDate >= startDate) &&
-                        (endDate.isEmpty() || asset.WarrantyDate <= endDate)
-            }
-        }
-    }
-
-
-    LaunchedEffect(Unit) {
-        val fetchedAssets = withContext(Dispatchers.IO)
-        { httpgetassets.getAssets() }
-        assetsList.value = fetchedAssets ?: emptyList()
-        filteredAssetsList.value = assetsList.value
-
-    }
-
-
-
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        if (!isLandscape) {
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
             ) {
                 DropDownMenu(
-                    listOf(
-                        "Exploration",
-                        "Production",
-                        "Transportation",
-                        "R&D",
-                        "Distribution",
-                        "QHSE"
-                    ), "Department"
+                    assetGroupList, "Asset Group"
                 ) {
-                    selectedDepartment = it
-                    filterAssets()
+                    assetGroup = it
                 }
-                DropDownMenu(listOf("Hydraulic", "Electrical", "Mechanical "), "Asset Group") {
-                    selectedAssetGroup = it
-                    filterAssets()
+                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
+                    accountableParty = it
                 }
 
             }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = assetDescription,
+                onValueChange = { assetDescription = it },
+                label = { Text("Asset Description") },
+                modifier = Modifier.width(300.dp),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
             Row(
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
             ) {
-                DatePickerDocked("startDate", "Start Date", startDate) {
-                    startDate = it
-                    filterAssets()
+                DatePickerDocked("startDate", "Start Date", expiredWarranty) {
+                    expiredWarranty = it
 
                 }
-                DatePickerDocked("endDate", "End Date", endDate) {
-                    endDate = it
-                    filterAssets()
-                }
+                Text(
+                    text = "Asset SN: \n" + generateAssetSN(
+                        departmentList.indexOf(department) + 1,
+                        assetGroupList.indexOf(assetGroup) + 1
+                    )
+                )
             }
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
 
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        if (searchQuery.length > 2) {
-                            filterAssets()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Button(onClick = {
+                    galleryLauncher.launch("image/*")
+                }) {
+                    Text("Select Images from Device")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    try {
+
+
+                        val generatedUri = generateImageUri(context)
+                        cameraImageUri = generatedUri
+                        cameraLauncher.launch(generatedUri)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                }) {
+                    Text("Capture Image with Camera")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    horizontalArrangement = Arrangement.Absolute.Right,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(10.dp)
+                ) {
+                    Button(onClick = {
+                        navController.navigate("Assets")
+                    }) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Button(onClick = {
+
+
+                        var imageByteArrays = imageUris.mapNotNull { uri ->
+                            getByteArrayFromUri(context, uri)
                         }
 
-                    },
-                    label = { Text("Search") },
-                    modifier = Modifier.width(300.dp)
-                )
+                        val base64Images = imageByteArrays.map {
+                            Base64.encodeToString(it, Base64.NO_WRAP)
+                        }
 
-                Spacer(
-                    modifier = Modifier
-                        .width(10.dp)
-                        .height(30.dp)
-                        .padding(5.dp)
-                        .align(Alignment.CenterVertically)
-                )
-                Button(onClick = {
-                    searchQuery = ""
-                    selectedAssetGroup = ""
-                    selectedDepartment = ""
-                    startDate = ""
-                    endDate = ""
-                    filterAssets()
-                }) {
-                    Text("Clear")
+                        var asset = createNewAsset(
+                            assetSN,
+                            assetName,
+                            (departmentList.indexOf(department) + 1),
+                            location,
+                            employeeList.find { it.FirstName == accountableParty }!!.ID,
+                            (assetGroupList.indexOf(assetGroup) + 1),
+                            assetDescription,
+                            expiredWarranty,
+                            base64Images
+                        )
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val httppostasset = httppostasset()
+                            httppostasset.postAsset(asset,
+                                { navController.navigate("Assets") },
+                                { Log.i("kilo", "Asset post failed") }
+                            )
+                        }
+
+
+                    }) {
+                        Text("Register")
+                    }
                 }
+                Spacer(modifier = Modifier.height(16.dp))
 
-                Spacer(modifier = Modifier.height(10.dp))
-
+                // Display the selected or captured images
+                if (imageUris.isNotEmpty()) {
+                    LazyRow {
+                        items(imageUris.size) { index ->
+                            val uri = imageUris[index]
+                            Image(
+                                bitmap = MediaStore.Images.Media.getBitmap(
+                                    context.contentResolver,
+                                    uri
+                                ).asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+                }
             }
+            Spacer(modifier = Modifier.height(10.dp))
+
+
         }
-
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(text = "Assets List", style = MaterialTheme.typography.labelMedium)
-        Spacer(modifier = Modifier.height(10.dp))
-
-        LazyColumn {
-            items(filteredAssetsList.value) { asset ->
-                AssetCard(asset)
-            }
-        }
-        Text(
-            text = "Showing ${filteredAssetsList.value.size} of ${assetsList.value.size} records",
-            modifier = Modifier.padding(16.dp)
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-        FloatingActionButton(
-            onClick = {
-                /* TODO: Add action here */
-                navController.navigate("RegisterAssets")
-            },
-            modifier = Modifier
-                .align(Alignment.End)
-                .padding(16.dp)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = "Add")
-        }
-
     }
-}
 
-@Composable
-fun AssetCard(asset: Asset) {
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    if (isLandscape) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(text = asset.AssetName, modifier = Modifier.weight(1f))
-            Text(text = asset.AssetSN, modifier = Modifier.weight(1f))
-            IconButton(onClick = { /* TODO: Handle Move action */ }) {
-                Icon(imageVector = Icons.Default.Edit, contentDescription = "Move")
+    @Composable
+    fun EditAssets(navController: NavController, context: Context, assetId: Int) {
+        var assetName by remember { mutableStateOf("") }
+        var department by remember { mutableStateOf("") }
+        var location by remember { mutableStateOf("") }
+        var assetGroup by remember { mutableStateOf("") }
+        var accountableParty by remember { mutableStateOf("") }
+        var assetDescription by remember { mutableStateOf("") }
+        var expiredWarranty by remember { mutableStateOf("") }
+        var assetSN by remember { mutableStateOf("") }
+        var imageUris by remember { mutableStateOf(listOf<Uri>()) }
+        var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
+        var getLocation by remember { mutableStateOf(false) }
+        var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
+        var initialAsset by remember { mutableStateOf<EditAsset?>(null) }
+        var departmentList by remember {
+            mutableStateOf<List<String>>(
+                listOf(
+                    "Exploration",
+                    "Production",
+                    "Transportation",
+                    "R&D",
+                    "Distribution",
+                    "QHSE"
+                )
+            )
+        }
+        var assetGroupList by remember {
+            mutableStateOf<List<String>>(
+                listOf(
+                    "Hydraulic",
+                    "Electrical",
+                    "Mechanical "
+                )
+            )
+        }
+
+        var ImageUri by remember { mutableStateOf<Uri?>(null) }
+
+        val galleryLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetMultipleContents()
+        ) { uris ->
+            if (uris != null) {
+                imageUris = imageUris + uris
             }
         }
-    } else {
+        var cameraImageUri by remember { mutableStateOf<Uri?>(null) }
+        val cameraLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.TakePicture()
+        ) { success ->
+            if (success && cameraImageUri != null) {
+                imageUris = imageUris + cameraImageUri!!
+            }
+        }
+        fun convertBase64StringToUri(base64String: String): Uri {
+            // Step 1: Convert Base64 string to byte array
+            val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
+
+            // Step 2: Create a temporary file
+            val tempFile = File(context.cacheDir, "temp_image_${UUID.randomUUID()}.jpg")
+
+            // Step 3: Write the byte array to the temporary file
+            FileOutputStream(tempFile).use { fos ->
+                fos.write(imageBytes)
+            }
+
+            // Step 4: Create and return a URI from the temporary file
+            return Uri.fromFile(tempFile)
+        }
+        fun byteArrayToUri(context: Context, byteArray: ByteArray, fileName: String): Uri? {
+            // Create a temporary file in the app's cache directory
+            val tempFile = File(context.cacheDir, fileName)
+
+            return try {
+                // Write the byte array to the file
+                FileOutputStream(tempFile).use { fos ->
+                    fos.write(byteArray)
+                    fos.flush()
+                }
+                // Return the URI of the file
+                Uri.fromFile(tempFile)
+            } catch (e: IOException) {
+                e.printStackTrace()
+                null // Return null if there is an error
+            }
+        }
+
+        fun convertMultipleBase64StringsToUris(base64Strings: List<String>): List<Uri> {
+            return base64Strings.map { convertBase64StringToUri(it) }
+        }
+        LaunchedEffect(Unit) {
+
+            withContext(Dispatchers.IO)
+            {
+                val httpgetassetforedit = httpgetassetforedit()
+                val asset = httpgetassetforedit.getAssetForEdit(assetId)
+                if(asset != null){
+                    initialAsset = asset
+                    assetName = asset.AssetName
+                    department = asset.DepartmentName
+                    location = asset.Location
+                    assetGroup = asset.AssetGroupName
+                    assetDescription = asset.Description
+                    expiredWarranty = asset.WarrantyDate
+                    assetSN = asset.AssetSN
+                }
+//                if(asset?.images == "null" || asset?.images == null || asset?.images == "") {
+//                }
+//                else {
+//                    val fileName = "image_${System.currentTimeMillis()}.jpg" // Unique file name
+//
+//                    //val byteArray = Base64.decode(asset?.images, Base64.NO_WRAP)
+//                    val imageUri = convertMultipleBase64StringsToUris(asset?.images ?: "")
+//                    ImageUri = imageUri
+//                    imageUris = imageUris + ImageUri!!
+//                }
+
+
+                val httpgetemployees = httpgetemployees()
+                val employees = httpgetemployees.getEmployees()
+                if (employees != null) {
+                    employeeList = employees
+                }
+            }
+        }
+
+
+        if (getLocation) {
+            LaunchedEffect(Unit) {
+
+                withContext(Dispatchers.IO)
+                {
+                    val httpgetlocations = httpgetlocations()
+                    val locations = httpgetlocations.getLocations(department)
+                    if (locations != null) {
+                        locationList = locations
+                    }
+                    getLocation = false
+                }
+            }
+        }
+
+
+        fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
+            val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
+            val departmentPart = departmentId.toString().padStart(2, '0')
+            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
+            val uniquePart = uniqueNumber.toString().padStart(4, '0')
+            assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+            return "$departmentPart/$assetGroupPart/$uniquePart"
+        }
+
+
+        fun generateImageUri(context: Context): Uri {
+            val imageFile = File(context.getExternalFilesDir(null), "${UUID.randomUUID()}.jpg")
+            return FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                imageFile
+            )
+        }
+
+        fun getByteArrayFromUri(context: Context, uri: Uri): ByteArray? {
+            return try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                inputStream?.readBytes()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
+
+
+
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(10.dp),
-            verticalArrangement = Arrangement.Center
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
         ) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "Register Assets", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(20.dp))
+            OutlinedTextField(
+                value = assetName,
+                onValueChange = { assetName = it },
+                label = { Text("Asset Name") },
+                modifier = Modifier.width(300.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
             ) {
-                Column(
-                    horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = asset.AssetName)
-                    Text(text = asset.DepartmentName)
-                    Text(text = asset.AssetSN)
-                    Text(text = asset.WarrantyDate)
+                OutlinedTextField(
+                    value = department,
+                    onValueChange = {},
+                    label = { Text("Department") },
+                    readOnly = true,
+                    modifier = Modifier.width(150.dp)
+                )
+
+                OutlinedTextField(
+                    value = location,
+                    onValueChange = {},
+                    label = { Text("Location") },
+                    readOnly = true,
+                    modifier = Modifier.width(150.dp)
+                )
+
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
+            ) {
+                OutlinedTextField(
+                    value = assetGroup,
+                    onValueChange = {},
+                    label = { Text("Asset Group") },
+                    readOnly = true,
+                    modifier = Modifier.width(150.dp)
+                )
+                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
+                    accountableParty = it
                 }
 
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = assetDescription,
+                onValueChange = { assetDescription = it },
+                label = { Text("Asset Description") },
+                modifier = Modifier.width(150.dp),
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
+            ) {
+                DatePickerDocked("startDate", "Start Date", expiredWarranty) {
+                    expiredWarranty = it
+
+                }
+                Text(
+                    text = "Asset SN: \n" + generateAssetSN(
+                        departmentList.indexOf(department) + 1,
+                        assetGroupList.indexOf(assetGroup) + 1
+                    )
+                )
+            }
+
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Button(onClick = {
+                    galleryLauncher.launch("image/*")
+                }) {
+                    Text("Select Images from Device")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(onClick = {
+                    try {
+
+
+                        val generatedUri = generateImageUri(context)
+                        cameraImageUri = generatedUri
+                        cameraLauncher.launch(generatedUri)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                }) {
+                    Text("Capture Image with Camera")
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
                 Row(
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.Absolute.Right,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(10.dp)
+                ) {
+                    Button(onClick = {
+                        navController.navigate("Assets")
+                    }) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Button(onClick = {
+
+
+                        var imageByteArrays = imageUris.mapNotNull { uri ->
+                            getByteArrayFromUri(context, uri)
+                        }
+
+                        val base64Images = imageByteArrays.map {
+                            Base64.encodeToString(it, Base64.NO_WRAP)
+                        }
+
+                        var asset = UpdateAsset(
+                            assetId,
+                            assetSN,
+                            assetName,
+                            initialAsset!!.DepartmentID,
+                            initialAsset!!.Location,
+                            employeeList.find { it.FirstName == accountableParty }!!.ID,
+                            (initialAsset!!.AssetGroupID),
+                            assetDescription,
+                            expiredWarranty,
+                            base64Images
+                        )
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val httppostupdatedasset = httppostupdatedasset()
+                            httppostupdatedasset.postAsset(asset,
+                                { navController.navigate("Assets") },
+                                { Log.i("kilo", "Asset post failed") }
+                            )
+                        }
+
+
+                    }) {
+                        Text("Update")
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Display the selected or captured images
+                if (imageUris.isNotEmpty()) {
+                    LazyRow {
+                        items(imageUris.size) { index ->
+                            val uri = imageUris[index]
+                            Image(
+                                bitmap = MediaStore.Images.Media.getBitmap(
+                                    context.contentResolver,
+                                    uri
+                                ).asImageBitmap(),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(100.dp)
+                                    .padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+
+
+        }
+    }
+
+
+    @SuppressLint("UnrememberedMutableState")
+    @Composable
+    fun AssetsScreen(navController: NavController, ) {
+        var assetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
+        var filteredAssetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
+        var searchQuery by remember { mutableStateOf("") }
+        var selectedAssetGroup by remember { mutableStateOf("") }
+        var selectedDepartment by remember { mutableStateOf("") }
+        var startDate by remember { mutableStateOf("") }
+        var endDate by remember { mutableStateOf("") }
+        val httpgetassets = remember { httpgetassets() }
+        val configuration = LocalConfiguration.current
+        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+
+        fun filterAssets() {
+            if (((searchQuery.isEmpty() || searchQuery.length < 3) && selectedAssetGroup.isEmpty() && selectedDepartment.isEmpty() && startDate.isEmpty() && endDate.isEmpty())) {
+                filteredAssetsList.value = assetsList.value
+
+            } else {
+                filteredAssetsList.value = assetsList.value.filter { asset ->
+                    (searchQuery.isEmpty() || asset.AssetSN.contains(
+                        searchQuery,
+                        ignoreCase = true
+                    ) || asset.AssetName.contains(searchQuery, ignoreCase = true)) &&
+                            (selectedAssetGroup.isEmpty() || asset.AssetGroupName == selectedAssetGroup) &&
+                            (selectedDepartment.isEmpty() || asset.DepartmentName == selectedDepartment) &&
+                            (startDate.isEmpty() || asset.WarrantyDate >= startDate) &&
+                            (endDate.isEmpty() || asset.WarrantyDate <= endDate)
+                }
+            }
+        }
+
+
+        LaunchedEffect(Unit) {
+            val fetchedAssets = withContext(Dispatchers.IO)
+            { httpgetassets.getAssets() }
+            assetsList.value = fetchedAssets ?: emptyList()
+            filteredAssetsList.value = assetsList.value
+
+        }
+
+
+
+
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
+        ) {
+            if (!isLandscape) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DropDownMenu(
+                        listOf(
+                            "Exploration",
+                            "Production",
+                            "Transportation",
+                            "R&D",
+                            "Distribution",
+                            "QHSE"
+                        ), "Department"
+                    ) {
+                        selectedDepartment = it
+                        filterAssets()
+                    }
+                    DropDownMenu(listOf("Hydraulic", "Electrical", "Mechanical "), "Asset Group") {
+                        selectedAssetGroup = it
+                        filterAssets()
+                    }
+
+                }
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DatePickerDocked("startDate", "Start Date", startDate) {
+                        startDate = it
+                        filterAssets()
+
+                    }
+                    DatePickerDocked("endDate", "End Date", endDate) {
+                        endDate = it
+                        filterAssets()
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    IconButton(onClick = { /* TODO: Handle Edit action */ }) {
-                        Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit")
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            if (searchQuery.length > 2) {
+                                filterAssets()
+                            }
+
+                        },
+                        label = { Text("Search") },
+                        modifier = Modifier.width(300.dp)
+                    )
+
+                    Spacer(
+                        modifier = Modifier
+                            .width(10.dp)
+                            .height(30.dp)
+                            .padding(5.dp)
+                            .align(Alignment.CenterVertically)
+                    )
+                    Button(onClick = {
+                        searchQuery = ""
+                        selectedAssetGroup = ""
+                        selectedDepartment = ""
+                        startDate = ""
+                        endDate = ""
+                        filterAssets()
+                    }) {
+                        Text("Clear")
                     }
-                    IconButton(onClick = { /* TODO: Handle Move action */ }) {
-                        Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Move")
-                    }
-                    IconButton(onClick = { /* TODO: Handle History action */ }) {
-                        Icon(imageVector = Icons.Default.Menu, contentDescription = "History")
-                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(text = "Assets List", style = MaterialTheme.typography.labelMedium)
+            Spacer(modifier = Modifier.height(10.dp))
 
-        }
-    }
-}
 
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DatePickerDocked(
-    identifier: String,
-    selectedDate: String,
-    label: String,
-    onDateSelected: (String) -> Unit
-) {
-    var showDatePicker by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState()
-    val selectedDate = datePickerState.selectedDateMillis?.let {
-        convertMillisToDate(it)
-    } ?: ""
-
-    Box(
-        modifier = Modifier
-            .width(200.dp)
-            .padding(5.dp)
-    ) {
-        OutlinedTextField(
-            value = selectedDate,
-            onValueChange = { },
-            label = { Text(label) },
-            readOnly = true,
-            trailingIcon = {
-                IconButton(onClick = { showDatePicker = !showDatePicker }) {
-                    Icon(
-                        imageVector = Icons.Default.DateRange,
-                        contentDescription = "Select date"
-                    )
-                }
-            },
-            modifier = Modifier
-                .width(200.dp)
-                .height(64.dp)
-        )
-
-        if (showDatePicker) {
-            Popup(
-                onDismissRequest = { showDatePicker = false },
-                alignment = Alignment.TopStart,
-            ) {
-                Box(
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = 64.dp)
-                        .shadow(elevation = 4.dp)
-                        .background(MaterialTheme.colorScheme.surface)
+                        .fillMaxSize()
+                        .padding(bottom = 80.dp) // Add padding to avoid covering the button
+                ) {
+                    items(filteredAssetsList.value) { asset ->
+                        AssetCard(asset, navController)
+                    }
+                }
+                Text(
+                    text = "Showing ${filteredAssetsList.value.size} of ${assetsList.value.size} records",
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+                FloatingActionButton(
+                    onClick = {
+                        /* TODO: Add action here */
+                        navController.navigate("RegisterAssets")
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
                         .padding(16.dp)
                 ) {
-                    DatePickerDialog(
-                        onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    val selectedDateMillis = datePickerState.selectedDateMillis
-                                    if (selectedDateMillis != null) {
-                                        onDateSelected(convertMillisToDate(selectedDateMillis))
-                                    }
-                                    showDatePicker = false
-                                }
-                            ) {
-                                Text("OK")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDatePicker = false }) {
-                                Text("Cancel")
-                            }
-                        }
+                    Icon(Icons.Default.Add, contentDescription = "Add")
+                }
+            }
+        }
+    }
+
+    @Composable
+    fun AssetCard(asset: Asset, navController: NavController) {
+        val configuration = LocalConfiguration.current
+        val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = asset.AssetName, modifier = Modifier.weight(1f))
+                Text(text = asset.AssetSN, modifier = Modifier.weight(1f))
+                IconButton(onClick = { /* TODO: Handle Move action */ }) {
+                    Icon(imageVector = Icons.Default.Edit, contentDescription = "Move")
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        DatePicker(state = datePickerState)
+                        Text(text = asset.AssetName)
+                        Text(text = asset.DepartmentName)
+                        Text(text = asset.AssetSN)
+                        Text(text = asset.WarrantyDate)
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+
+                        IconButton(onClick = {
+                            navController.navigate("EditAssets/${asset.ID}")
+                        }) {
+                            Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit")
+                        }
+                        IconButton(onClick = { /* TODO: Handle Move action */ }) {
+                            Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Move")
+                        }
+                        IconButton(onClick = { /* TODO: Handle History action */ }) {
+                            Icon(imageVector = Icons.Default.Menu, contentDescription = "History")
+                        }
                     }
                 }
 
+
             }
         }
     }
-}
-
-fun convertMillisToDate(millis: Long): String {
-    val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    return formatter.format(Date(millis))
-}
 
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    var selectedItem by remember { mutableStateOf("") }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = Modifier
-            .width(200.dp)
-            .padding(5.dp) // Adjust the width as needed
-
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun DatePickerDocked(
+        identifier: String,
+        selectedDate: String,
+        label: String,
+        onDateSelected: (String) -> Unit
     ) {
-        TextField(
-            value = selectedItem,
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(),
-            label = { Text(name) },
+        var showDatePicker by remember { mutableStateOf(false) }
+        val datePickerState = rememberDatePickerState()
+        val selectedDate = datePickerState.selectedDateMillis?.let {
+            convertMillisToDate(it)
+        } ?: ""
 
+        Box(
+            modifier = Modifier
+                .width(200.dp)
+                .padding(5.dp)
+        ) {
+            OutlinedTextField(
+                value = selectedDate,
+                onValueChange = { },
+                label = { Text(label) },
+                readOnly = true,
+                trailingIcon = {
+                    IconButton(onClick = { showDatePicker = !showDatePicker }) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = "Select date"
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(64.dp)
             )
 
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            items.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(text = item) },
-                    onClick = {
-                        if (item == "Default") {
-                            selectedItem = ""
-                        } else {
-                            selectedItem = item
+            if (showDatePicker) {
+                Popup(
+                    onDismissRequest = { showDatePicker = false },
+                    alignment = Alignment.TopStart,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .offset(y = 64.dp)
+                            .shadow(elevation = 4.dp)
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(16.dp)
+                    ) {
+                        DatePickerDialog(
+                            onDismissRequest = { showDatePicker = false },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        val selectedDateMillis = datePickerState.selectedDateMillis
+                                        if (selectedDateMillis != null) {
+                                            onDateSelected(convertMillisToDate(selectedDateMillis))
+                                        }
+                                        showDatePicker = false
+                                    }
+                                ) {
+                                    Text("OK")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDatePicker = false }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        ) {
+                            DatePicker(state = datePickerState)
                         }
-                        expanded = false
-                        onItemSelected(item)
                     }
-                )
+
+                }
             }
         }
     }
 
-}
+    fun convertMillisToDate(millis: Long): String {
+        val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        return formatter.format(Date(millis))
+    }
 
 
-@RequiresApi(Build.VERSION_CODES.O)
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    KazanInventoryAppTheme {
-        //RegisterAssets(context = context)
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> Unit) {
+        var expanded by remember { mutableStateOf(false) }
+        var selectedItem by remember { mutableStateOf("") }
+
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded },
+            modifier = Modifier
+                .width(200.dp)
+                .padding(5.dp) // Adjust the width as needed
+
+        ) {
+            TextField(
+                value = selectedItem,
+                onValueChange = {},
+                readOnly = true,
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier.menuAnchor(),
+                label = { Text(name) },
+
+                )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                items.forEach { item ->
+                    DropdownMenuItem(
+                        text = { Text(text = item) },
+                        onClick = {
+                            if (item == "Default") {
+                                selectedItem = ""
+                            } else {
+                                selectedItem = item
+                            }
+                            expanded = false
+                            onItemSelected(item)
+                        }
+                    )
+                }
+            }
+        }
+
+    }
+
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    @Preview(showBackground = true)
+    @Composable
+    fun GreetingPreview() {
+        KazanInventoryAppTheme {
+            val navController = rememberNavController()
+
+            AssetsScreen(navController)
+            //,context = LocalContext.current
+        }
     }
 }
