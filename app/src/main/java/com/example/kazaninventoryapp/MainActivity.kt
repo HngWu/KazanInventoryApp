@@ -91,6 +91,16 @@ import org.jetbrains.annotations.Async
 import java.io.File
 import java.util.UUID
 import android.Manifest
+import androidx.navigation.NavController
+import com.example.kazaninventoryapp.Models.Employee
+import com.example.kazaninventoryapp.Models.createNewAsset
+import com.example.kazaninventoryapp.httpservice.httpgetemployees
+import com.example.kazaninventoryapp.httpservice.httpgetlocations
+import com.example.kazaninventoryapp.httpservice.httppostasset
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import android.util.Base64
+import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -130,9 +140,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val navController = rememberNavController()
-            NavHost(navController, "RegisterAssets") {
-                composable("Assets") { AssetsScreen() }
-                composable("RegisterAssets") { RegisterAssets(context = applicationContext) }
+            NavHost(navController, "Assets") {
+                composable("Assets") { AssetsScreen(navController) }
+                composable("RegisterAssets") {RegisterAssets(navController, context = applicationContext) }
             }
         }
         requestCameraPermission()
@@ -146,7 +156,7 @@ class MainActivity : ComponentActivity() {
 
 
 @Composable
-fun RegisterAssets(context: Context) {
+fun RegisterAssets(navController:NavController,context: Context) {
     var assetName by remember { mutableStateOf("") }
     var department by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
@@ -154,9 +164,22 @@ fun RegisterAssets(context: Context) {
     var accountableParty by remember { mutableStateOf("") }
     var assetDescription by remember { mutableStateOf("") }
     var expiredWarranty by remember { mutableStateOf("") }
-    var pictures by remember { mutableStateOf<List<Picture>>(emptyList()) }
     var assetSN by remember { mutableStateOf("") }
     var imageUris by remember { mutableStateOf(listOf<Uri>()) }
+    var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var getLocation by remember { mutableStateOf(false) }
+    var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
+    var departmentList by remember { mutableStateOf<List<String>>(listOf(
+        "Exploration",
+        "Production",
+        "Transportation",
+        "R&D",
+        "Distribution",
+        "QHSE"
+    )) }
+
+    var assetGroupList by remember { mutableStateOf<List<String>>(listOf("Hydraulic", "Electrical", "Mechanical ")) }
+
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -174,6 +197,44 @@ fun RegisterAssets(context: Context) {
         }
     }
 
+    LaunchedEffect(Unit) {
+
+        withContext(Dispatchers.IO)
+        {
+            val httpgetemployees = httpgetemployees()
+            val employees = httpgetemployees.getEmployees()
+            if (employees != null) {
+                employeeList = employees
+        }
+    }
+        }
+
+
+if (getLocation)
+{
+        LaunchedEffect(Unit) {
+
+            withContext(Dispatchers.IO)
+            {
+                val httpgetlocations = httpgetlocations()
+                val locations = httpgetlocations.getLocations(department)
+                if (locations != null) {
+                    locationList = locations
+                }
+                getLocation = false
+            }
+        }
+    }
+
+    fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
+        val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
+        val departmentPart = departmentId.toString().padStart(2, '0')
+        val assetGroupPart = assetGroupId.toString().padStart(2, '0')
+        val uniquePart = uniqueNumber.toString().padStart(4, '0')
+        assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+        return "$departmentPart/$assetGroupPart/$uniquePart"
+    }
+
 
     fun generateImageUri(context: Context): Uri {
         val imageFile = File(context.getExternalFilesDir(null), "${UUID.randomUUID()}.jpg")
@@ -183,6 +244,19 @@ fun RegisterAssets(context: Context) {
             imageFile
         )
     }
+
+    fun getByteArrayFromUri(context: Context, uri: Uri): ByteArray? {
+        return try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            inputStream?.readBytes()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+
+
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -192,7 +266,7 @@ fun RegisterAssets(context: Context) {
         Text(text = "Register Assets", style = MaterialTheme.typography.bodyLarge)
         Spacer(modifier = Modifier.height(20.dp))
         OutlinedTextField(
-            value = "",
+            value = assetName,
             onValueChange = { assetName = it },
             label = { Text("Asset Name") },
             modifier = Modifier.width(300.dp)
@@ -204,19 +278,13 @@ fun RegisterAssets(context: Context) {
             modifier = Modifier.padding(10.dp)
         ) {
             DropDownMenu(
-                listOf(
-                    "Exploration",
-                    "Production",
-                    "Transportation",
-                    "R&D",
-                    "Distribution",
-                    "QHSE"
-                ), "Department"
+                departmentList, "Department"
             ) {
                 department = it
+                getLocation = true
             }
 
-            DropDownMenu(listOf("Kazan", "Volka", "Moscow "), "Location") {
+            DropDownMenu(locationList, "Location") {
                 location = it
             }
 
@@ -228,11 +296,11 @@ fun RegisterAssets(context: Context) {
             modifier = Modifier.padding(10.dp)
         ) {
             DropDownMenu(
-                listOf("Hydraulic", "Electrical", "Mechanical "), "Asset Group"
+                assetGroupList, "Asset Group"
             ) {
                 assetGroup = it
             }
-            DropDownMenu(listOf("NA", "NA", "NA"), "Acc. Party") {
+            DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
                 accountableParty = it
             }
 
@@ -240,7 +308,7 @@ fun RegisterAssets(context: Context) {
         Spacer(modifier = Modifier.height(10.dp))
 
         OutlinedTextField(
-            value = "",
+            value = assetDescription,
             onValueChange = { assetDescription = it },
             label = { Text("Asset Description") },
             modifier = Modifier.width(300.dp),
@@ -256,7 +324,10 @@ fun RegisterAssets(context: Context) {
                 expiredWarranty = it
 
             }
-            Text(text = "Asset SN: \n" + assetSN)
+            Text(text = "Asset SN: \n" + generateAssetSN(
+                departmentList.indexOf(department)+1,
+                assetGroupList.indexOf(assetGroup)+1
+            ))
         }
 
 
@@ -292,6 +363,56 @@ fun RegisterAssets(context: Context) {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                horizontalArrangement = Arrangement.Absolute.Right,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(10.dp)
+            ) {
+                Button(onClick = {
+                    navController.navigate("Assets")
+                }) {
+                    Text("Cancel")
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Button(onClick = {
+
+
+
+
+
+                    var imageByteArrays = imageUris.mapNotNull { uri ->
+                        getByteArrayFromUri(context, uri)
+                    }
+
+                    val base64Images = imageByteArrays.map {
+                        Base64.encodeToString(it, Base64.NO_WRAP)
+                    }
+
+                    var asset = createNewAsset(
+                        assetSN,
+                        assetName,
+                        (departmentList.indexOf(department)+1),
+                        location,
+                        employeeList.find { it.FirstName == accountableParty }!!.ID,
+                        (assetGroupList.indexOf(assetGroup)+1),
+                        assetDescription,
+                        expiredWarranty,
+                        base64Images
+                    )
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val httppostasset = httppostasset()
+                        httppostasset.postAsset(asset,
+                            { navController.navigate("Assets") },
+                            { Log.i("kilo", "Asset post failed") }
+                        )
+                    }
+
+
+                }) {
+                    Text("Register")
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Display the selected or captured images
             if (imageUris.isNotEmpty()) {
@@ -312,32 +433,13 @@ fun RegisterAssets(context: Context) {
 
 
 
-        Spacer(modifier = Modifier
-            .height(10.dp)
-            .width(300.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.Absolute.Right,
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(10.dp)
-        ) {
-            Button(onClick = { /* TODO: Add action here */ }) {
-                Text("Cancel")
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Button(onClick = { /* TODO: Add action here */ }) {
-                Text("Register")
-            }
-        }
-
-
     }
 }
 
 
 @SuppressLint("UnrememberedMutableState")
 @Composable
-fun AssetsScreen() {
+fun AssetsScreen(navController:NavController,) {
     var assetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
     var filteredAssetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -482,6 +584,7 @@ fun AssetsScreen() {
         FloatingActionButton(
             onClick = {
                 /* TODO: Add action here */
+                navController.navigate("RegisterAssets")
             },
             modifier = Modifier
                 .align(Alignment.End)

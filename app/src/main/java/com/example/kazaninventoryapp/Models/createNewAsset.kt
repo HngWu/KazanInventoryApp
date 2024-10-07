@@ -1,18 +1,18 @@
 package com.example.kazaninventoryapp.Models
+
+import android.media.Image
 import kotlinx.serialization.Serializable
 
-
 @Serializable
-class Asset
-(
-    val ID: Int,
+data class createNewAsset(
     val AssetSN: String,
     val AssetName: String,
     val DepartmentID: Int,
+    val Location: String,
     val EmployeeID: Int,
     val AssetGroupID: Int,
     val Description: String,
     val WarrantyDate: String,
-    val DepartmentName : String,
-    val AssetGroupName : String,
+    val images: List<String>
+
 )
