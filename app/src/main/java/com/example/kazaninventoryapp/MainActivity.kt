@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Picture
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -77,17 +76,12 @@ import com.example.kazaninventoryapp.ui.theme.KazanInventoryAppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import org.jetbrains.annotations.Async
 import java.io.File
 import java.util.UUID
 import android.Manifest
@@ -100,18 +94,25 @@ import com.example.kazaninventoryapp.httpservice.httppostasset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import android.util.Base64
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.MutableState
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.example.kazaninventoryapp.Models.EditAsset
+import com.example.kazaninventoryapp.Models.TransferAsset
+import com.example.kazaninventoryapp.Models.TransferHistory
 import com.example.kazaninventoryapp.Models.UpdateAsset
 import com.example.kazaninventoryapp.httpservice.httpgetassetforedit
+import com.example.kazaninventoryapp.httpservice.httpgettransferhistory
 import com.example.kazaninventoryapp.httpservice.httppostupdatedasset
+import com.example.kazaninventoryapp.httpservice.httptransferassets
 import java.io.FileOutputStream
 import java.io.IOException
 import kotlin.random.Random
 
+@Suppress("NAME_SHADOWING")
 class MainActivity : ComponentActivity() {
+    private val assetChangeTrigger = mutableStateOf(false)
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -150,7 +151,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
             NavHost(navController, "Assets") {
-                composable("Assets") { AssetsScreen(navController) }
+                composable("Assets") { AssetsScreen(navController, assetChangeTrigger) }
                 composable("RegisterAssets") {
                     RegisterAssets(
                         navController,
@@ -158,14 +159,36 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 composable(
+                    "TransferAsset/{assetId}",
+                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                ) { backStackEntry ->
+                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                    TransferAssetForm(navController, assetId) {
+                        assetChangeTrigger.value = !assetChangeTrigger.value
+                    }
+                }
+                composable(
                     "EditAssets/{assetId}",
                     arguments = listOf(navArgument("assetId") { type = NavType.IntType })
                 ) { backStackEntry ->
                     val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
-                    EditAssets(navController, context = applicationContext, assetId = assetId)
+                    EditAssets(navController, context = applicationContext, assetId = assetId) {
+                        assetChangeTrigger.value = !assetChangeTrigger.value
 
+                    }
                 }
+                composable(
+                    "TransferHistory/{assetId}",
+                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                ) { backStackEntry ->
+                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                    val httpgettransferhistory = remember { httpgettransferhistory() }
+                    val transferHistory = httpgettransferhistory.GetHistory(assetId) // Implement this function to fetch transfer history
+                    TransferHistoryScreen(navController, assetId, transferHistory)
+                }
+
             }
+
             requestCameraPermission()
 
         }
@@ -173,6 +196,238 @@ class MainActivity : ComponentActivity() {
 
     }
 
+
+
+    @Composable
+    fun TransferHistoryScreen(
+        navController: NavController,
+        assetId: Int,
+        transferHistory: MutableList<TransferHistory?>?
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
+        ) {
+            Text("Transfer History", style = MaterialTheme.typography.bodyLarge)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (transferHistory!!.isEmpty()) {
+                Text("No recent transfers in the last twelve months.")
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { navController.popBackStack() }) {
+                    Text("Back")
+                }
+            } else {
+                LazyColumn {
+                    items(transferHistory.sortedBy { it!!.transferDate }) { record ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(8.dp),
+                            horizontalAlignment = Alignment.Start,
+                            verticalArrangement = Arrangement.Top
+                        ) {
+                            Text("Transfer Date: ${record?.transferDate}")
+                            Text("Old Department: ${record?.oldDepartment}")
+                            Text("Old Asset SN: ${record?.newDepartment}")
+                            Text("New Department: ${record?.fromAssetSn}")
+                            Text("New Asset SN: ${record?.toAssetSn}")
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(onClick = { navController.popBackStack() }) {
+                    Text("Back")
+                }
+            }
+        }
+    }
+
+    data class TransferRecord(
+        val transferDate: String,
+        val oldDepartment: String,
+        val oldAssetSN: String,
+        val newDepartment: String,
+        val newAssetSN: String
+    )
+
+
+    @Composable
+    fun TransferAssetForm(
+        navController: NavController,
+        assetId: Int,
+        onTransfer: (String) -> Unit
+    ) {
+        var destinationDepartment by remember { mutableStateOf("") }
+        var destinationLocation by remember { mutableStateOf("") }
+        var newAssetSN by remember { mutableStateOf("") }
+        var asset by remember { mutableStateOf<EditAsset?>(null) }
+        var checkAsset by remember { mutableStateOf(false) }
+        var assetName by remember { mutableStateOf("") }
+        var department by remember { mutableStateOf("") }
+        var location by remember { mutableStateOf("") }
+        var assetGroup by remember { mutableStateOf("") }
+        var assetGroupName by remember { mutableStateOf("") }
+        var assetDescription by remember { mutableStateOf("") }
+        var expiredWarranty by remember { mutableStateOf("") }
+        var assetSN by remember { mutableStateOf("") }
+        var assetGroupId by remember { mutableStateOf(0) }
+        var getLocation by remember { mutableStateOf(false) }
+        var departmentList by remember {
+            mutableStateOf<List<String>>(
+                listOf(
+                    "Exploration",
+                    "Production",
+                    "Transportation",
+                    "R&D",
+                    "Distribution",
+                    "QHSE"
+                )
+            )
+        }
+        var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
+
+        fun generateNewAssetSN(departmentId: Int, assetGroupId: Int): String {
+            val uniqueNumber = Random.nextInt(10000)
+            val departmentPart = departmentId.toString().padStart(2, '0')
+            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
+            val uniquePart = uniqueNumber.toString().padStart(4, '0')
+            newAssetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+            return newAssetSN
+        }
+        if (true)
+        {
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) {
+                val fetchedAsset = httpgetassetforedit().getAssetForEdit(assetId)
+                if (fetchedAsset != null) {
+                    asset = fetchedAsset
+                    assetName = fetchedAsset.AssetName
+                    location = fetchedAsset.Location
+                    assetGroup = fetchedAsset.AssetGroupName
+                    assetDescription = fetchedAsset.Description
+                    expiredWarranty = fetchedAsset.WarrantyDate
+                    assetSN = fetchedAsset.AssetSN
+                    assetGroupName = fetchedAsset.AssetGroupName
+                    department = fetchedAsset.DepartmentName
+                    assetGroupId = fetchedAsset.AssetGroupID
+                    checkAsset = true
+                }
+            }
+        }
+
+        LaunchedEffect(destinationDepartment) {
+            if (destinationDepartment.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    val httpgetlocations = httpgetlocations()
+                    val locations = httpgetlocations.getLocations(department)
+                    if (locations != null) {
+                        locationList = locations
+                    }
+                }
+            }
+        }
+            }
+
+        if (!checkAsset) {
+            // Show loading or error state
+            Text("Loading...")
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Top
+            ) {
+                Text("Transfer Asset", style = MaterialTheme.typography.bodyLarge)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Display asset details (read-only)
+                OutlinedTextField(
+                    value = assetName,
+                    onValueChange = {},
+                    label = { Text("Asset Name") },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = department,
+                    onValueChange = {},
+                    label = { Text("Current Department") },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = assetSN,
+                    onValueChange = {},
+                    label = { Text("Asset SN") },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Destination Department drop-down
+                DropDownMenu(departmentList, "Destination Department") {
+                    destinationDepartment = it
+                    newAssetSN = generateNewAssetSN(departmentList.indexOf(destinationDepartment) + 1, assetGroupId)
+                    getLocation = true
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Destination Location drop-down
+                DropDownMenu(locationList, "Destination Location") {
+                    destinationLocation = it
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Display new asset serial number
+                OutlinedTextField(
+                    value = newAssetSN,
+                    onValueChange = {},
+                    label = { Text("New Asset SN") },
+                    readOnly = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Buttons
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Back")
+                    }
+                    Button(onClick = {
+                        val transferAsset = TransferAsset(
+                            assetId,
+                            newAssetSN,
+                            departmentList.indexOf(destinationDepartment) + 1,
+                            destinationLocation,
+                        )
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val httpposttransferasset = httptransferassets()
+                            httpposttransferasset.postAsset(transferAsset,
+                                {
+                                    onTransfer("Asset transferred successfully")
+                                    navController.popBackStack()
+                                },
+                                { Log.i("kilo", "Asset transfer failed") }
+                            )
+                        }
+                    }) {
+                        Text("Submit")
+                    }
+                    Button(onClick = { navController.popBackStack() }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
 
     @Composable
     fun RegisterAssets(navController: NavController, context: Context) {
@@ -468,7 +723,12 @@ class MainActivity : ComponentActivity() {
 
 
     @Composable
-    fun EditAssets(navController: NavController, context: Context, assetId: Int) {
+    fun EditAssets(
+        navController: NavController,
+        context: Context,
+        assetId: Int,
+        onAssetEdited: () -> Unit
+    ) {
         var assetName by remember { mutableStateOf("") }
         var department by remember { mutableStateOf("") }
         var location by remember { mutableStateOf("") }
@@ -521,6 +781,7 @@ class MainActivity : ComponentActivity() {
                 imageUris = imageUris + cameraImageUri!!
             }
         }
+
         fun convertBase64StringToUri(base64String: String): Uri {
             // Step 1: Convert Base64 string to byte array
             val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
@@ -536,6 +797,7 @@ class MainActivity : ComponentActivity() {
             // Step 4: Create and return a URI from the temporary file
             return Uri.fromFile(tempFile)
         }
+
         fun byteArrayToUri(context: Context, byteArray: ByteArray, fileName: String): Uri? {
             // Create a temporary file in the app's cache directory
             val tempFile = File(context.cacheDir, fileName)
@@ -563,7 +825,7 @@ class MainActivity : ComponentActivity() {
             {
                 val httpgetassetforedit = httpgetassetforedit()
                 val asset = httpgetassetforedit.getAssetForEdit(assetId)
-                if(asset != null){
+                if (asset != null) {
                     initialAsset = asset
                     assetName = asset.AssetName
                     department = asset.DepartmentName
@@ -791,7 +1053,10 @@ class MainActivity : ComponentActivity() {
                         CoroutineScope(Dispatchers.IO).launch {
                             val httppostupdatedasset = httppostupdatedasset()
                             httppostupdatedasset.postAsset(asset,
-                                { navController.navigate("Assets") },
+                                {
+                                    onAssetEdited()
+                                    navController.navigate("Assets")
+                                },
                                 { Log.i("kilo", "Asset post failed") }
                             )
                         }
@@ -831,7 +1096,7 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("UnrememberedMutableState")
     @Composable
-    fun AssetsScreen(navController: NavController, ) {
+    fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<Boolean>) {
         var assetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
         var filteredAssetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
         var searchQuery by remember { mutableStateOf("") }
@@ -861,7 +1126,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
+        if (assetChangeTrigger.value) {
+            LaunchedEffect(Unit) {
+                val fetchedAssets = withContext(Dispatchers.IO)
+                { httpgetassets.getAssets() }
+                assetsList.value = fetchedAssets ?: emptyList()
+                filteredAssetsList.value = assetsList.value
+                assetChangeTrigger.value = false
+            }
+        }
 
         LaunchedEffect(Unit) {
             val fetchedAssets = withContext(Dispatchers.IO)
@@ -1046,10 +1319,15 @@ class MainActivity : ComponentActivity() {
                         }) {
                             Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit")
                         }
-                        IconButton(onClick = { /* TODO: Handle Move action */ }) {
+                        IconButton(onClick = {
+                            navController.navigate("TransferAsset/${asset.ID}")
+                        }) {
                             Icon(imageVector = Icons.Default.ExitToApp, contentDescription = "Move")
                         }
-                        IconButton(onClick = { /* TODO: Handle History action */ }) {
+                        IconButton(onClick = {
+                            navController.navigate("TransferHistory/${asset.ID}")
+
+                        }) {
                             Icon(imageVector = Icons.Default.Menu, contentDescription = "History")
                         }
                     }
@@ -1202,7 +1480,7 @@ class MainActivity : ComponentActivity() {
         KazanInventoryAppTheme {
             val navController = rememberNavController()
 
-            AssetsScreen(navController)
+            AssetsScreen(navController, assetChangeTrigger)
             //,context = LocalContext.current
         }
     }
