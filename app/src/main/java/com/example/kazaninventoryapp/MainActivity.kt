@@ -95,6 +95,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import android.util.Base64
 import androidx.compose.runtime.MutableState
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.example.kazaninventoryapp.Models.EditAsset
@@ -163,7 +165,7 @@ class MainActivity : ComponentActivity() {
                     arguments = listOf(navArgument("assetId") { type = NavType.IntType })
                 ) { backStackEntry ->
                     val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
-                    TransferAssetForm(navController, assetId) {
+                    TransferAssetForm(navController, assetId, context = applicationContext) {
                         assetChangeTrigger.value = !assetChangeTrigger.value
                     }
                 }
@@ -204,6 +206,22 @@ class MainActivity : ComponentActivity() {
         assetId: Int,
         transferHistory: MutableList<TransferHistory?>?
     ) {
+        var transferHistory by remember { mutableStateOf(transferHistory) }
+        var isLoading by remember { mutableStateOf(true) }
+
+
+
+        LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO) {
+                    val httpgettransferhistory = httpgettransferhistory()
+                    val fetchedTransferHistory = httpgettransferhistory.GetHistory(assetId)
+                    transferHistory = fetchedTransferHistory
+                    isLoading = false
+
+            }
+        }
+
+
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -212,7 +230,10 @@ class MainActivity : ComponentActivity() {
             Text("Transfer History", style = MaterialTheme.typography.bodyLarge)
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (transferHistory!!.isEmpty()) {
+
+
+
+            if (isLoading) {
                 Text("No recent transfers in the last twelve months.")
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { navController.popBackStack() }) {
@@ -220,7 +241,7 @@ class MainActivity : ComponentActivity() {
                 }
             } else {
                 LazyColumn {
-                    items(transferHistory.sortedBy { it!!.transferDate }) { record ->
+                    items(transferHistory!!.sortedBy { it!!.transferDate }) { record ->
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(8.dp),
                             horizontalAlignment = Alignment.Start,
@@ -228,8 +249,8 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("Transfer Date: ${record?.transferDate}")
                             Text("Old Department: ${record?.oldDepartment}")
-                            Text("Old Asset SN: ${record?.newDepartment}")
-                            Text("New Department: ${record?.fromAssetSn}")
+                            Text("New Department: ${record?.newDepartment}")
+                            Text("Old Asset SN: ${record?.fromAssetSn}")
                             Text("New Asset SN: ${record?.toAssetSn}")
                             Spacer(modifier = Modifier.height(8.dp))
                         }
@@ -243,20 +264,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    data class TransferRecord(
-        val transferDate: String,
-        val oldDepartment: String,
-        val oldAssetSN: String,
-        val newDepartment: String,
-        val newAssetSN: String
-    )
+
 
 
     @Composable
     fun TransferAssetForm(
         navController: NavController,
         assetId: Int,
-        onTransfer: (String) -> Unit
+        context: Context,
+        onTransfer: (String) -> Unit,
     ) {
         var destinationDepartment by remember { mutableStateOf("") }
         var destinationLocation by remember { mutableStateOf("") }
@@ -273,6 +289,8 @@ class MainActivity : ComponentActivity() {
         var assetSN by remember { mutableStateOf("") }
         var assetGroupId by remember { mutableStateOf(0) }
         var getLocation by remember { mutableStateOf(false) }
+        var newNumber by remember { mutableStateOf(0) }
+        var generateNumber by remember { mutableStateOf(true) }
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -287,13 +305,41 @@ class MainActivity : ComponentActivity() {
         }
         var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
 
-        fun generateNewAssetSN(departmentId: Int, assetGroupId: Int): String {
-            val uniqueNumber = Random.nextInt(10000)
+
+        var uniquePart by remember { mutableStateOf("") }
+        fun generateAssetSN(departmentId: Int, assetGroup: String): String {
+            val assetgroupDict = mapOf(
+                1 to "Hydraulic",
+                3 to "Electrical",
+                4 to "Mechanical "
+            )
+
+
             val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
-            val uniquePart = uniqueNumber.toString().padStart(4, '0')
-            newAssetSN = "$departmentPart/$assetGroupPart/$uniquePart"
-            return newAssetSN
+            val assetGroupPart = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()?.padStart(2, '0') ?: "00"
+
+            if (generateNumber)
+            {
+
+                val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
+
+                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                newNumber = lastNumber + 1
+                sharedPreferences.edit().putInt("last_number", newNumber).apply()
+                generateNumber = false
+            }
+            val previousSN =assetSN.split("/")[0]
+            if (previousSN == departmentPart) {
+                uniquePart = assetSN.split("/")[2]
+                newAssetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+            }
+            else{
+                uniquePart = newNumber.toString().padStart(4, '0')
+                newAssetSN = "$departmentPart/$assetGroupPart/$uniquePart"
+            }
+
+            return "$departmentPart/$assetGroupPart/$uniquePart"
         }
         if (true)
         {
@@ -320,7 +366,7 @@ class MainActivity : ComponentActivity() {
             if (destinationDepartment.isNotEmpty()) {
                 withContext(Dispatchers.IO) {
                     val httpgetlocations = httpgetlocations()
-                    val locations = httpgetlocations.getLocations(department)
+                    val locations = httpgetlocations.getLocations(destinationDepartment)
                     if (locations != null) {
                         locationList = locations
                     }
@@ -372,7 +418,7 @@ class MainActivity : ComponentActivity() {
                 // Destination Department drop-down
                 DropDownMenu(departmentList, "Destination Department") {
                     destinationDepartment = it
-                    newAssetSN = generateNewAssetSN(departmentList.indexOf(destinationDepartment) + 1, assetGroupId)
+                    newAssetSN = generateAssetSN(departmentList.indexOf(destinationDepartment) + 1, assetGroup)
                     getLocation = true
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -431,6 +477,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     fun RegisterAssets(navController: NavController, context: Context) {
+        var newNumber by remember { mutableStateOf(0) }
         var assetName by remember { mutableStateOf("") }
         var department by remember { mutableStateOf("") }
         var location by remember { mutableStateOf("") }
@@ -443,6 +490,7 @@ class MainActivity : ComponentActivity() {
         var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
         var getLocation by remember { mutableStateOf(false) }
         var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
+        var generateNumber by remember { mutableStateOf(true) }
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -511,11 +559,27 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
-            val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
+        fun generateAssetSN(departmentId: Int, assetGroup: String): String {
+            val assetgroupDict = mapOf(
+                1 to "Hydraulic",
+                3 to "Electrical",
+                4 to "Mechanical "
+            )
+
+
             val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
-            val uniquePart = uniqueNumber.toString().padStart(4, '0')
+            val assetGroupPart = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()?.padStart(2, '0') ?: "00"
+
+            if (generateNumber)
+            {
+                val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                newNumber = lastNumber + 1
+                sharedPreferences.edit().putInt("last_number", newNumber).apply()
+                generateNumber = false
+            }
+
+            val uniquePart = newNumber.toString().padStart(4, '0')
             assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
             return "$departmentPart/$assetGroupPart/$uniquePart"
         }
@@ -612,7 +676,7 @@ class MainActivity : ComponentActivity() {
                 Text(
                     text = "Asset SN: \n" + generateAssetSN(
                         departmentList.indexOf(department) + 1,
-                        assetGroupList.indexOf(assetGroup) + 1
+                        assetGroup
                     )
                 )
             }
@@ -670,13 +734,21 @@ class MainActivity : ComponentActivity() {
                             Base64.encodeToString(it, Base64.NO_WRAP)
                         }
 
+                        val assetgroupDict = mapOf(
+                            1 to "Hydraulic",
+                            3 to "Electrical",
+                            4 to "Mechanical "
+                        )
+
+                        val assetGroupPart = assetgroupDict.entries.find { it.value == assetGroup }?.key
+
                         var asset = createNewAsset(
                             assetSN,
                             assetName,
                             (departmentList.indexOf(department) + 1),
                             location,
                             employeeList.find { it.FirstName == accountableParty }!!.ID,
-                            (assetGroupList.indexOf(assetGroup) + 1),
+                            (assetGroupPart?.toInt() ?: 0),
                             assetDescription,
                             expiredWarranty,
                             base64Images
@@ -742,6 +814,8 @@ class MainActivity : ComponentActivity() {
         var getLocation by remember { mutableStateOf(false) }
         var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
         var initialAsset by remember { mutableStateOf<EditAsset?>(null) }
+        var generateNumber by remember { mutableStateOf(true) }
+        var newNumber by remember { mutableStateOf(0) }
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -835,16 +909,16 @@ class MainActivity : ComponentActivity() {
                     expiredWarranty = asset.WarrantyDate
                     assetSN = asset.AssetSN
                 }
-//                if(asset?.images == "null" || asset?.images == null || asset?.images == "") {
-//                }
-//                else {
-//                    val fileName = "image_${System.currentTimeMillis()}.jpg" // Unique file name
-//
-//                    //val byteArray = Base64.decode(asset?.images, Base64.NO_WRAP)
-//                    val imageUri = convertMultipleBase64StringsToUris(asset?.images ?: "")
-//                    ImageUri = imageUri
-//                    imageUris = imageUris + ImageUri!!
-//                }
+                if(asset?.images == "null" || asset?.images == null || asset?.images == "") {
+                }
+                else {
+                    val fileName = "image_${System.currentTimeMillis()}.jpg" // Unique file name
+
+                    //val byteArray = Base64.decode(asset?.images, Base64.NO_WRAP)
+                    val imageUri = convertBase64StringToUri(asset?.images ?: "")
+                    ImageUri = imageUri
+                    imageUris = imageUris + ImageUri!!
+                }
 
 
                 val httpgetemployees = httpgetemployees()
@@ -872,14 +946,31 @@ class MainActivity : ComponentActivity() {
         }
 
 
-        fun generateAssetSN(departmentId: Int, assetGroupId: Int): String {
-            val uniqueNumber = Random.nextInt(10000) // Generates a random number between 0 and 9999
+        fun generateAssetSN(departmentId: Int, assetGroup: String): String {
+            val assetgroupDict = mapOf(
+                1 to "Hydraulic",
+                3 to "Electrical",
+                4 to "Mechanical "
+            )
+
+
             val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart = assetGroupId.toString().padStart(2, '0')
-            val uniquePart = uniqueNumber.toString().padStart(4, '0')
+            val assetGroupPart = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()?.padStart(2, '0') ?: "00"
+
+            if (generateNumber)
+            {
+                val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                newNumber = lastNumber + 1
+                sharedPreferences.edit().putInt("last_number", newNumber).apply()
+                generateNumber = false
+            }
+
+            val uniquePart = newNumber.toString().padStart(4, '0')
             assetSN = "$departmentPart/$assetGroupPart/$uniquePart"
             return "$departmentPart/$assetGroupPart/$uniquePart"
         }
+
 
 
         fun generateImageUri(context: Context): Uri {
@@ -980,9 +1071,9 @@ class MainActivity : ComponentActivity() {
                 Text(
                     text = "Asset SN: \n" + generateAssetSN(
                         departmentList.indexOf(department) + 1,
-                        assetGroupList.indexOf(assetGroup) + 1
-                    )
-                )
+                        assetGroup
+                    ))
+
             }
 
 
@@ -1073,17 +1164,29 @@ class MainActivity : ComponentActivity() {
                     LazyRow {
                         items(imageUris.size) { index ->
                             val uri = imageUris[index]
-                            Image(
-                                bitmap = MediaStore.Images.Media.getBitmap(
-                                    context.contentResolver,
-                                    uri
-                                ).asImageBitmap(),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(100.dp)
-                                    .padding(8.dp)
-                            )
+                            val bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                            if (bitmap != null) {
+                                Image(
+                                    bitmap = bitmap.asImageBitmap(),
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .padding(8.dp)
+                                )
+                            } else {
+                                // Display a placeholder or error message
+                                Text(
+                                    text = "Image not available",
+                                    modifier = Modifier
+                                        .size(100.dp)
+                                        .padding(8.dp)
+                                        .background(Color.Gray),
+                                    color = Color.White,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
                         }
+                    }
                     }
                 }
             }
@@ -1480,8 +1583,7 @@ class MainActivity : ComponentActivity() {
         KazanInventoryAppTheme {
             val navController = rememberNavController()
 
-            AssetsScreen(navController, assetChangeTrigger)
+            //AssetsScreen(navController, assetChangeTrigger)
             //,context = LocalContext.current
         }
     }
-}
