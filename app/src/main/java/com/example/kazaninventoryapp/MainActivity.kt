@@ -85,6 +85,8 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.util.UUID
 import android.Manifest
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.navigation.NavController
 import com.example.kazaninventoryapp.Models.Employee
 import com.example.kazaninventoryapp.Models.createNewAsset
@@ -816,6 +818,7 @@ class MainActivity : ComponentActivity() {
         var initialAsset by remember { mutableStateOf<EditAsset?>(null) }
         var generateNumber by remember { mutableStateOf(true) }
         var newNumber by remember { mutableStateOf(0) }
+        var bitmapImage = remember { mutableStateOf<Bitmap?>(null) }
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -861,15 +864,14 @@ class MainActivity : ComponentActivity() {
             val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
 
             // Step 2: Create a temporary file
-            val tempFile = File(context.cacheDir, "temp_image_${UUID.randomUUID()}.jpg")
+            val file = File(context.cacheDir, "File_${UUID.randomUUID()}.jpg")
+            file.createNewFile()
 
-            // Step 3: Write the byte array to the temporary file
-            FileOutputStream(tempFile).use { fos ->
-                fos.write(imageBytes)
-            }
+            // Write byte array to file
+            FileOutputStream(file).use { it.write(imageBytes) }
 
-            // Step 4: Create and return a URI from the temporary file
-            return Uri.fromFile(tempFile)
+            // Get the file's content URI using FileProvider
+            return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }
 
         fun byteArrayToUri(context: Context, byteArray: ByteArray, fileName: String): Uri? {
@@ -892,6 +894,18 @@ class MainActivity : ComponentActivity() {
 
         fun convertMultipleBase64StringsToUris(base64Strings: List<String>): List<Uri> {
             return base64Strings.map { convertBase64StringToUri(it) }
+        }
+
+        fun base64ToBitmap(base64String: String): Bitmap? {
+            // Decode the Base64 string into a byte array
+            return try {
+                val decodedBytes = Base64.decode(base64String, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+            } catch (e: Exception) {
+                Log.e("ImageError", "Error decoding base64 image: ${e.message}")
+                null
+                }
+
         }
         LaunchedEffect(Unit) {
 
@@ -916,6 +930,8 @@ class MainActivity : ComponentActivity() {
 
                     //val byteArray = Base64.decode(asset?.images, Base64.NO_WRAP)
                     val imageUri = convertBase64StringToUri(asset?.images ?: "")
+                    val bitmap = base64ToBitmap(asset?.images ?: "")
+                    bitmapImage.value = bitmap
                     ImageUri = imageUri
                     imageUris = imageUris + ImageUri!!
                 }
@@ -991,7 +1007,24 @@ class MainActivity : ComponentActivity() {
                 null
             }
         }
-
+        fun loadBitmapFromUri(context: Context, uri: Uri): Bitmap? {
+            return try {
+                when {
+                    uri.scheme == "content" -> {
+                        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                            BitmapFactory.decodeStream(inputStream)
+                        }
+                    }
+                    uri.scheme == "file" -> {
+                        BitmapFactory.decodeFile(uri.path)
+                    }
+                    else -> null
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
 
 
         Column(
@@ -1093,8 +1126,6 @@ class MainActivity : ComponentActivity() {
 
                 Button(onClick = {
                     try {
-
-
                         val generatedUri = generateImageUri(context)
                         cameraImageUri = generatedUri
                         cameraLauncher.launch(generatedUri)
@@ -1161,10 +1192,22 @@ class MainActivity : ComponentActivity() {
 
                 // Display the selected or captured images
                 if (imageUris.isNotEmpty()) {
+                    if(bitmapImage.value != null) {
+
+                        Image(
+                            bitmap = bitmapImage.value!!.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(100.dp)
+                                .padding(8.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     LazyRow {
                         items(imageUris.size) { index ->
                             val uri = imageUris[index]
-                            val bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                            val bitmap = loadBitmapFromUri(context, uri)
                             if (bitmap != null) {
                                 Image(
                                     bitmap = bitmap.asImageBitmap(),
