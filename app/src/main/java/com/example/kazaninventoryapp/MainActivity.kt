@@ -1423,6 +1423,7 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
                 Icon(Icons.Default.Add, contentDescription = "Add")
             }
         }
+
     }
 }
 
