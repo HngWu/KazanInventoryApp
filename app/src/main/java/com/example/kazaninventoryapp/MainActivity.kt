@@ -96,6 +96,8 @@ import com.example.kazaninventoryapp.httpservice.httppostasset
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import android.util.Base64
+import android.widget.Toast
+import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
@@ -112,6 +114,13 @@ import com.example.kazaninventoryapp.httpservice.httptransferassets
 import java.io.FileOutputStream
 import java.io.IOException
 import kotlin.random.Random
+
+
+//TODO 1: Implement the clear button for the search bar correctly by clearing the search query
+//TODO 2: Implement the landscape mode for the app where change in orientation does not affect the filters
+//TODO 3: Implement the generation of the new asset serial number when transferring an asset correctly
+//TODO 4: Implement the snackbar for the app
+//TODO 5: Implement display of multiple images correctly
 
 @Suppress("NAME_SHADOWING")
 class MainActivity : ComponentActivity() {
@@ -308,9 +317,12 @@ class MainActivity : ComponentActivity() {
             )
         }
         var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
-
-
         var uniquePart by remember { mutableStateOf("") }
+        var lastNumber by remember { mutableStateOf(0) }
+        var departmentPart by remember { mutableStateOf("") }
+        var assetGroupPart by remember { mutableStateOf("") }
+
+
         fun generateAssetSN(departmentId: Int, assetGroup: String): String {
             val assetgroupDict = mapOf(
                 1 to "Hydraulic",
@@ -318,21 +330,15 @@ class MainActivity : ComponentActivity() {
                 4 to "Mechanical "
             )
 
-
-            val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart =
-                assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()
-                    ?.padStart(2, '0') ?: "00"
+            departmentPart = departmentId.toString().padStart(2, '0')
+            assetGroupPart = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()?.padStart(2, '0') ?: "00"
+            var intassetGroup = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toInt() ?: 0
 
             if (generateNumber) {
 
-                val sharedPreferences =
-                    context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-
-
-                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                lastNumber = sharedPreferences.getInt("last_number_${departmentPart}_${intassetGroup}", 0)
                 newNumber = lastNumber + 1
-                sharedPreferences.edit().putInt("last_number", newNumber).apply()
                 generateNumber = false
             }
             val previousSN = assetSN.split("/")[0]
@@ -420,8 +426,8 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Destination Department drop-down
-                DropDownMenu(departmentList, "Destination Department") {
-                    destinationDepartment = it
+                DropDownMenu(departmentList, "Destination Department",destinationDepartment, 200) { selectedItem->
+                    destinationDepartment = selectedItem
                     newAssetSN = generateAssetSN(
                         departmentList.indexOf(destinationDepartment) + 1,
                         assetGroup
@@ -431,8 +437,8 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Destination Location drop-down
-                DropDownMenu(locationList, "Destination Location") {
-                    destinationLocation = it
+                DropDownMenu(locationList, "Destination Location", destinationLocation, 200) {selectedItem->
+                    destinationLocation = selectedItem
                 }
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -465,10 +471,16 @@ class MainActivity : ComponentActivity() {
                             val httpposttransferasset = httptransferassets()
                             httpposttransferasset.postAsset(transferAsset,
                                 {
+                                    val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                    sharedPreferences.edit().putInt("last_number_${departmentPart}_${assetGroupPart}", uniquePart.toInt()).apply()
                                     onTransfer("Asset transferred successfully")
-                                    navController.popBackStack()
+                                    Toast.makeText(context, "Asset transferred successfully", Toast.LENGTH_SHORT).show()
+                                    navController.navigate("Assets")
                                 },
-                                { Log.i("kilo", "Asset transfer failed") }
+                                {
+                                    Log.i("kilo", "Asset transfer failed")
+                                    Toast.makeText(context, "Asset transfer failed", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
                     }) {
@@ -477,6 +489,7 @@ class MainActivity : ComponentActivity() {
                     Button(onClick = { navController.popBackStack() }) {
                         Text("Cancel")
                     }
+                    Toast.LENGTH_SHORT
                 }
             }
         }
@@ -497,7 +510,7 @@ class MainActivity : ComponentActivity() {
         var locationList by remember { mutableStateOf<List<String>>(emptyList()) }
         var getLocation by remember { mutableStateOf(false) }
         var employeeList by remember { mutableStateOf<List<Employee>>(emptyList()) }
-        var generateNumber by remember { mutableStateOf(true) }
+        var generateNumber by remember { mutableStateOf(false) }
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -510,6 +523,10 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+        var lastNumber by remember { mutableStateOf(0) }
+        var departmentPart by remember { mutableStateOf("") }
+        var assetGroupPart by remember { mutableStateOf("") }
+        var uniquePart by remember { mutableStateOf("") }
 
         var assetGroupList by remember {
             mutableStateOf<List<String>>(
@@ -572,19 +589,16 @@ class MainActivity : ComponentActivity() {
                 3 to "Electrical",
                 4 to "Mechanical "
             )
-
-
-            val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart =
+            departmentPart = departmentId.toString().padStart(2, '0')
+            assetGroupPart =
                 assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()
                     ?.padStart(2, '0') ?: "00"
-
+            var intassetGroup = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toInt() ?: 0
             if (generateNumber) {
                 val sharedPreferences =
                     context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                lastNumber = sharedPreferences.getInt("last_number_${departmentPart}_${intassetGroup}", 0)
                 newNumber = lastNumber + 1
-                sharedPreferences.edit().putInt("last_number", newNumber).apply()
                 generateNumber = false
             }
 
@@ -629,41 +643,42 @@ class MainActivity : ComponentActivity() {
                 label = { Text("Asset Name") },
                 modifier = Modifier.width(300.dp)
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Row(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(10.dp)
+                modifier = Modifier.padding(5.dp)
             ) {
                 DropDownMenu(
-                    departmentList, "Department"
+                    departmentList, "Department", selectedItem = department, width = 200
                 ) {
                     department = it
                     getLocation = true
                 }
 
-                DropDownMenu(locationList, "Location") {
+                DropDownMenu(locationList, "Location", selectedItem = location, width = 200) {
                     location = it
                 }
 
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Row(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(10.dp)
             ) {
                 DropDownMenu(
-                    assetGroupList, "Asset Group"
+                    assetGroupList, "Asset Group", selectedItem = assetGroup, width = 200
                 ) {
                     assetGroup = it
+                    generateNumber = true
                 }
-                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
+                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party", selectedItem = accountableParty, width = 200) {
                     accountableParty = it
                 }
 
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             OutlinedTextField(
                 value = assetDescription,
@@ -671,12 +686,12 @@ class MainActivity : ComponentActivity() {
                 label = { Text("Asset Description") },
                 modifier = Modifier.width(300.dp),
             )
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             Row(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(10.dp)
+                modifier = Modifier.padding(5.dp)
             ) {
                 DatePickerDocked("startDate", "Start Date", expiredWarranty) {
                     expiredWarranty = it
@@ -694,30 +709,35 @@ class MainActivity : ComponentActivity() {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp),
+                    .padding(5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Button(onClick = {
-                    galleryLauncher.launch("image/*")
-                }) {
-                    Text("Select Images from Device")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Button(onClick = {
-                    try {
-                        val generatedUri = generateImageUri(context)
-                        cameraImageUri = generatedUri
-                        cameraLauncher.launch(generatedUri)
-                    } catch (e: Exception) {
-                        Log.d("kilo", "Error: ${e.message}")
-                        e.printStackTrace()
+                Row (
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ){
+                    Button(onClick = {
+                        galleryLauncher.launch("image/*")
+                    }) {
+                        Text("Select Images")
                     }
 
-                }) {
-                    Text("Capture Image with Camera")
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Button(onClick = {
+                        try {
+                            val generatedUri = generateImageUri(context)
+                            cameraImageUri = generatedUri
+                            cameraLauncher.launch(generatedUri)
+                        } catch (e: Exception) {
+                            Log.d("kilo", "Error: ${e.message}")
+                            e.printStackTrace()
+                        }
+
+                    }) {
+                        Text("Capture Image")
+                    }
                 }
+
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
@@ -731,44 +751,58 @@ class MainActivity : ComponentActivity() {
                         Text("Cancel")
                     }
                     Spacer(modifier = Modifier.width(10.dp))
+                    Toast.LENGTH_SHORT
                     Button(onClick = {
+                        try {
+                            var imageByteArrays = imageUris.mapNotNull { uri ->
+                                getByteArrayFromUri(context, uri)
+                            }
 
+                            val base64Images = imageByteArrays.map {
+                                Base64.encodeToString(it, Base64.NO_WRAP)
+                            }
 
-                        var imageByteArrays = imageUris.mapNotNull { uri ->
-                            getByteArrayFromUri(context, uri)
-                        }
-
-                        val base64Images = imageByteArrays.map {
-                            Base64.encodeToString(it, Base64.NO_WRAP)
-                        }
-
-                        val assetgroupDict = mapOf(
-                            1 to "Hydraulic",
-                            3 to "Electrical",
-                            4 to "Mechanical "
-                        )
-
-                        val assetGroupPart =
-                            assetgroupDict.entries.find { it.value == assetGroup }?.key
-
-                        var asset = createNewAsset(
-                            assetSN,
-                            assetName,
-                            (departmentList.indexOf(department) + 1),
-                            location,
-                            employeeList.find { it.FirstName == accountableParty }!!.ID,
-                            (assetGroupPart?.toInt() ?: 0),
-                            assetDescription,
-                            expiredWarranty,
-                            base64Images
-                        )
-                        CoroutineScope(Dispatchers.IO).launch {
-                            val httppostasset = httppostasset()
-                            httppostasset.postAsset(asset,
-                                { navController.navigate("Assets") },
-                                { Log.i("kilo", "Asset post failed") }
+                            val assetgroupDict = mapOf(
+                                1 to "Hydraulic",
+                                3 to "Electrical",
+                                4 to "Mechanical "
                             )
+
+                            val assetGroupPart =
+                                assetgroupDict.entries.find { it.value == assetGroup }?.key
+
+                            var asset = createNewAsset(
+                                assetSN,
+                                assetName,
+                                (departmentList.indexOf(department) + 1),
+                                location,
+                                employeeList.find { it.FirstName == accountableParty }!!.ID,
+                                (assetGroupPart?.toInt() ?: 0),
+                                assetDescription,
+                                expiredWarranty,
+                                base64Images
+                            )
+                            CoroutineScope(Dispatchers.IO).launch {
+                                val httppostasset = httppostasset()
+                                httppostasset.postAsset(asset,
+                                    {
+                                        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                        sharedPreferences.edit().putInt("last_number_${departmentPart}_${assetGroupPart}", newNumber).apply()
+                                        navController.navigate("Assets")
+                                        Toast.makeText(context, "Asset registered successfully", Toast.LENGTH_SHORT).show()
+                                    },
+                                    {
+                                        Log.i("kilo", "Asset post failed")
+                                        Toast.makeText(context, "Asset registration failed", Toast.LENGTH_SHORT).show()
+                                    }
+
+                                )
+                            }
+                        }catch (e: Exception){
+                            Log.d("kilo", "Error: ${e.message}")
+                            e.printStackTrace()
                         }
+
 
 
                     }) {
@@ -779,7 +813,7 @@ class MainActivity : ComponentActivity() {
 
                 // Display the selected or captured images
                 if (imageUris.isNotEmpty()) {
-                    LazyRow {
+                    LazyColumn {
                         items(imageUris.size) { index ->
                             val uri = imageUris[index]
                             Image(
@@ -826,6 +860,11 @@ class MainActivity : ComponentActivity() {
         var generateNumber by remember { mutableStateOf(true) }
         var newNumber by remember { mutableStateOf(0) }
         var bitmapImage = remember { mutableStateOf<Bitmap?>(null) }
+        var lastNumber by remember { mutableStateOf(0) }
+        var departmentPart by remember { mutableStateOf("") }
+        var assetGroupPart by remember { mutableStateOf("") }
+        var uniquePart by remember { mutableStateOf("") }
+
         var departmentList by remember {
             mutableStateOf<List<String>>(
                 listOf(
@@ -976,17 +1015,17 @@ class MainActivity : ComponentActivity() {
             )
 
 
-            val departmentPart = departmentId.toString().padStart(2, '0')
-            val assetGroupPart =
+            departmentPart = departmentId.toString().padStart(2, '0')
+            assetGroupPart =
                 assetgroupDict.entries.find { it.value == assetGroup }?.key?.toString()
                     ?.padStart(2, '0') ?: "00"
+            var intassetGroup = assetgroupDict.entries.find { it.value == assetGroup }?.key?.toInt() ?: 0
 
             if (generateNumber) {
                 val sharedPreferences =
                     context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                val lastNumber = sharedPreferences.getInt("last_number", 0)
+                lastNumber = sharedPreferences.getInt("last_number_${departmentPart}_${intassetGroup}", 0)
                 newNumber = lastNumber + 1
-                sharedPreferences.edit().putInt("last_number", newNumber).apply()
                 generateNumber = false
             }
 
@@ -1087,7 +1126,7 @@ class MainActivity : ComponentActivity() {
                     readOnly = true,
                     modifier = Modifier.width(150.dp)
                 )
-                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party") {
+                DropDownMenu(employeeList.map { it.FirstName }, "Acc. Party", accountableParty, 200) {
                     accountableParty = it
                 }
 
@@ -1161,38 +1200,45 @@ class MainActivity : ComponentActivity() {
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Button(onClick = {
+                            try {
+                                var imageByteArrays = imageUris.mapNotNull { uri ->
+                                    getByteArrayFromUri(context, uri)
+                                }
+
+                                val base64Images = imageByteArrays.map {
+                                    Base64.encodeToString(it, Base64.NO_WRAP)
+                                }
+
+                                var asset = UpdateAsset(
+                                    assetId,
+                                    assetSN,
+                                    assetName,
+                                    initialAsset!!.DepartmentID,
+                                    initialAsset!!.Location,
+                                    employeeList.find { it.FirstName == accountableParty }!!.ID,
+                                    (initialAsset!!.AssetGroupID),
+                                    assetDescription,
+                                    expiredWarranty,
+                                    base64Images
+                                )
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    val httppostupdatedasset = httppostupdatedasset()
+                                    httppostupdatedasset.postAsset(asset,
+                                        {
+                                            onAssetEdited()
+                                            val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                            sharedPreferences.edit().putInt("last_number_${departmentPart}_${assetGroupPart}", uniquePart.toInt()).apply()
+                                            navController.navigate("Assets")
+                                        },
+                                        { Log.i("kilo", "Asset post failed") }
+                                    )
+                                }
+                            }catch (e: Exception){
+                                Log.d("kilo", "Error: ${e.message}")
+                                e.printStackTrace()
+                            }
 
 
-                        var imageByteArrays = imageUris.mapNotNull { uri ->
-                            getByteArrayFromUri(context, uri)
-                        }
-
-                        val base64Images = imageByteArrays.map {
-                            Base64.encodeToString(it, Base64.NO_WRAP)
-                        }
-
-                        var asset = UpdateAsset(
-                            assetId,
-                            assetSN,
-                            assetName,
-                            initialAsset!!.DepartmentID,
-                            initialAsset!!.Location,
-                            employeeList.find { it.FirstName == accountableParty }!!.ID,
-                            (initialAsset!!.AssetGroupID),
-                            assetDescription,
-                            expiredWarranty,
-                            base64Images
-                        )
-                        CoroutineScope(Dispatchers.IO).launch {
-                            val httppostupdatedasset = httppostupdatedasset()
-                            httppostupdatedasset.postAsset(asset,
-                                {
-                                    onAssetEdited()
-                                    navController.navigate("Assets")
-                                },
-                                { Log.i("kilo", "Asset post failed") }
-                            )
-                        }
 
 
                     }) {
@@ -1309,6 +1355,13 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
+
+//        if(isLandscape)
+//        {
+//            filterAssets()
+//        }
+
+
         if (!isLandscape) {
             Row(
                 horizontalArrangement = Arrangement.Center,
@@ -1322,12 +1375,12 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
                         "R&D",
                         "Distribution",
                         "QHSE"
-                    ), "Department"
+                    ), "Department", selectedItem = selectedDepartment, width = 200
                 ) {
                     selectedDepartment = it
                     filterAssets()
                 }
-                DropDownMenu(listOf("Hydraulic", "Electrical", "Mechanical "), "Asset Group") {
+                DropDownMenu(listOf("Hydraulic", "Electrical", "Mechanical "), "Asset Group", selectedItem = selectedAssetGroup, width = 200) {
                     selectedAssetGroup = it
                     filterAssets()
                 }
@@ -1337,12 +1390,12 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DatePickerDocked("startDate", "Start Date", startDate) {
+                DatePickerDocked("startDate", startDate, startDate) {
                     startDate = it
                     filterAssets()
 
                 }
-                DatePickerDocked("endDate", "End Date", endDate) {
+                DatePickerDocked("endDate", endDate, endDate) {
                     endDate = it
                     filterAssets()
                 }
@@ -1400,8 +1453,12 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
                     .padding(bottom = 80.dp) // Add padding to avoid covering the button
             ) {
                 items(filteredAssetsList.value) { asset ->
-                    AssetCard(asset, navController)
+                    AssetCard(asset, navController){
+                        filterAssets()
+                    }
                 }
+                filterAssets()
+
             }
             Text(
                 text = "Showing ${filteredAssetsList.value.size} of ${assetsList.value.size} records",
@@ -1428,7 +1485,7 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
 }
 
 @Composable
-fun AssetCard(asset: Asset, navController: NavController) {
+fun AssetCard(asset: Asset, navController: NavController, onLandScape: (String) -> Unit) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -1441,10 +1498,14 @@ fun AssetCard(asset: Asset, navController: NavController) {
         ) {
             Text(text = asset.AssetName, modifier = Modifier.weight(1f))
             Text(text = asset.AssetSN, modifier = Modifier.weight(1f))
-            IconButton(onClick = { /* TODO: Handle Move action */ }) {
+            IconButton(onClick = {
+                navController.navigate("EditAssets/${asset.ID}")
+            }) {
                 Icon(imageVector = Icons.Default.Edit, contentDescription = "Move")
             }
         }
+        onLandScape(asset.AssetSN)
+
     } else {
         Column(
             modifier = Modifier
@@ -1510,6 +1571,7 @@ fun DatePickerDocked(
     val selectedDate = datePickerState.selectedDateMillis?.let {
         convertMillisToDate(it)
     } ?: ""
+    var selectedDateText by remember { mutableStateOf(selectedDate) }
 
     Box(
         modifier = Modifier
@@ -1517,7 +1579,7 @@ fun DatePickerDocked(
             .padding(5.dp)
     ) {
         OutlinedTextField(
-            value = selectedDate,
+            value = selectedDateText,
             onValueChange = { },
             label = { Text(label) },
             readOnly = true,
@@ -1585,17 +1647,15 @@ fun convertMillisToDate(millis: Long): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> Unit) {
+fun DropDownMenu(items: List<String>, name: String, selectedItem: String,width: Int, onItemSelected: (String) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    var selectedItem by remember { mutableStateOf("") }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
         onExpandedChange = { expanded = !expanded },
         modifier = Modifier
-            .width(200.dp)
+            .width(width.dp)
             .padding(5.dp) // Adjust the width as needed
-
     ) {
         TextField(
             value = selectedItem,
@@ -1603,9 +1663,8 @@ fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> 
             readOnly = true,
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier.menuAnchor(),
-            label = { Text(name) },
-
-            )
+            label = { Text(name) }
+        )
 
         ExposedDropdownMenu(
             expanded = expanded,
@@ -1615,11 +1674,6 @@ fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> 
                 DropdownMenuItem(
                     text = { Text(text = item) },
                     onClick = {
-                        if (item == "Default") {
-                            selectedItem = ""
-                        } else {
-                            selectedItem = item
-                        }
                         expanded = false
                         onItemSelected(item)
                     }
@@ -1627,7 +1681,6 @@ fun DropDownMenu(items: List<String>, name: String, onItemSelected: (String) -> 
             }
         }
     }
-
 }
 
 
