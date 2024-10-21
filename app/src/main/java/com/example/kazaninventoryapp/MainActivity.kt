@@ -99,6 +99,7 @@ import android.util.Base64
 import android.widget.Toast
 import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavType
@@ -1300,13 +1301,13 @@ class MainActivity : ComponentActivity() {
 @SuppressLint("UnrememberedMutableState")
 @Composable
 fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<Boolean>) {
-    var assetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
-    var filteredAssetsList = remember { mutableStateOf<List<Asset>>(emptyList()) }
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedAssetGroup by remember { mutableStateOf("") }
-    var selectedDepartment by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
+    var assetsList = rememberSaveable { mutableStateOf<List<Asset>>(emptyList()) }
+    var filteredAssetsList = rememberSaveable { mutableStateOf<List<Asset>>(emptyList()) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedAssetGroup by rememberSaveable { mutableStateOf("") }
+    var selectedDepartment by rememberSaveable { mutableStateOf("") }
+    var startDate by rememberSaveable { mutableStateOf("") }
+    var endDate by rememberSaveable { mutableStateOf("") }
     val httpgetassets = remember { httpgetassets() }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1356,10 +1357,6 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
         verticalArrangement = Arrangement.Top
     ) {
 
-//        if(isLandscape)
-//        {
-//            filterAssets()
-//        }
 
 
         if (!isLandscape) {
@@ -1440,7 +1437,9 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
 
             }
         }
-
+        else
+        {
+        }
         Spacer(modifier = Modifier.height(10.dp))
         Text(text = "Assets List", style = MaterialTheme.typography.labelMedium)
         Spacer(modifier = Modifier.height(10.dp))
@@ -1682,6 +1681,11 @@ fun DropDownMenu(items: List<String>, name: String, selectedItem: String,width: 
         }
     }
 }
+
+
+
+
+
 
 
 @RequiresApi(Build.VERSION_CODES.O)
