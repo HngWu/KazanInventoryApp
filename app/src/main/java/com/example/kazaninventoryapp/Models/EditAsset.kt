@@ -13,6 +13,6 @@ class EditAsset
     val DepartmentName : String,
     val AssetGroupName : String,
     val Location: String,
-    val images: String
+    val images: List<String>?
 
 )

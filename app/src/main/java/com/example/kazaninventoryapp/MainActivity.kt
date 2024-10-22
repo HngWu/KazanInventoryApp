@@ -887,7 +887,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
-
+        var assetforupdate by remember { mutableStateOf<UpdateAsset?>(null) }
         var ImageUri by remember { mutableStateOf<Uri?>(null) }
 
         val galleryLauncher = rememberLauncherForActivityResult(
@@ -921,27 +921,6 @@ class MainActivity : ComponentActivity() {
             return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }
 
-        fun byteArrayToUri(context: Context, byteArray: ByteArray, fileName: String): Uri? {
-            // Create a temporary file in the app's cache directory
-            val tempFile = File(context.cacheDir, fileName)
-
-            return try {
-                // Write the byte array to the file
-                FileOutputStream(tempFile).use { fos ->
-                    fos.write(byteArray)
-                    fos.flush()
-                }
-                // Return the URI of the file
-                Uri.fromFile(tempFile)
-            } catch (e: IOException) {
-                e.printStackTrace()
-                null // Return null if there is an error
-            }
-        }
-
-        fun convertMultipleBase64StringsToUris(base64Strings: List<String>): List<Uri> {
-            return base64Strings.map { convertBase64StringToUri(it) }
-        }
 
         fun base64ToBitmap(base64String: String): Bitmap? {
             // Decode the Base64 string into a byte array
@@ -969,18 +948,22 @@ class MainActivity : ComponentActivity() {
                     assetDescription = asset.Description
                     expiredWarranty = asset.WarrantyDate
                     assetSN = asset.AssetSN
-                }
-                if (asset?.images == "null" || asset?.images == null || asset?.images == "") {
-                } else {
-                    val fileName = "image_${System.currentTimeMillis()}.jpg" // Unique file name
+                    uniquePart = asset.AssetSN.split("/")[2]
 
-                    //val byteArray = Base64.decode(asset?.images, Base64.NO_WRAP)
-                    val imageUri = convertBase64StringToUri(asset?.images ?: "")
-                    val bitmap = base64ToBitmap(asset?.images ?: "")
-                    bitmapImage.value = bitmap
-                    ImageUri = imageUri
-                    imageUris = imageUris + ImageUri!!
                 }
+
+                if (asset?.images.isNullOrEmpty()) {
+
+                }
+                else {
+                    //val fileName = "image_${System.currentTimeMillis()}.jpg"
+                    for (image in asset?.images.orEmpty()) {
+                        val imageUri = convertBase64StringToUri(image)
+                        imageUris = imageUris + imageUri
+                    }
+
+                }
+
 
 
                 val httpgetemployees = httpgetemployees()
@@ -1182,6 +1165,7 @@ class MainActivity : ComponentActivity() {
                         cameraLauncher.launch(generatedUri)
                     } catch (e: Exception) {
                         e.printStackTrace()
+                        Log.d("kilo", "Error: ${e.message}")
                     }
 
                 }) {
@@ -1206,11 +1190,11 @@ class MainActivity : ComponentActivity() {
                                     getByteArrayFromUri(context, uri)
                                 }
 
-                                val base64Images = imageByteArrays.map {
+                                val base64Images = if (imageByteArrays.isEmpty()) null else imageByteArrays.map {
                                     Base64.encodeToString(it, Base64.NO_WRAP)
                                 }
 
-                                var asset = UpdateAsset(
+                                assetforupdate = UpdateAsset(
                                     assetId,
                                     assetSN,
                                     assetName,
@@ -1222,22 +1206,27 @@ class MainActivity : ComponentActivity() {
                                     expiredWarranty,
                                     base64Images
                                 )
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    val httppostupdatedasset = httppostupdatedasset()
-                                    httppostupdatedasset.postAsset(asset,
-                                        {
-                                            onAssetEdited()
-                                            val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                                            sharedPreferences.edit().putInt("last_number_${departmentPart}_${assetGroupPart}", uniquePart.toInt()).apply()
-                                            navController.navigate("Assets")
-                                        },
-                                        { Log.i("kilo", "Asset post failed") }
-                                    )
-                                }
+
                             }catch (e: Exception){
                                 Log.d("kilo", "Error: ${e.message}")
                                 e.printStackTrace()
+                                Log.e("Error", "Exception: ${e.message}", e)
                             }
+                        CoroutineScope(Dispatchers.IO).launch {
+
+                            val httppostupdatedasset = httppostupdatedasset()
+                            httppostupdatedasset.postAsset(assetforupdate,
+                                {
+                                    onAssetEdited()
+                                    val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                    sharedPreferences.edit().putInt("last_number_${departmentPart}_${assetGroupPart}", uniquePart.toInt()).apply()
+                                    navController.navigate("Assets")
+                                    Toast.makeText(context, "Asset updated successfully", Toast.LENGTH_SHORT).show()
+                                },
+                                { Log.i("kilo", "Asset post failed") }
+                            )
+                        }
+
 
 
 
@@ -1250,19 +1239,8 @@ class MainActivity : ComponentActivity() {
 
                 // Display the selected or captured images
                 if (imageUris.isNotEmpty()) {
-                    if (bitmapImage.value != null) {
 
-                        Image(
-                            bitmap = bitmapImage.value!!.asImageBitmap(),
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(100.dp)
-                                .padding(8.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    LazyRow {
+                    LazyColumn {
                         items(imageUris.size) { index ->
                             val uri = imageUris[index]
                             val bitmap = loadBitmapFromUri(context, uri)

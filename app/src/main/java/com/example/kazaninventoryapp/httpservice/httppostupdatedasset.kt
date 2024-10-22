@@ -11,7 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 class httppostupdatedasset {
-    fun postAsset(asset: UpdateAsset, onSuccess: (Boolean) -> Unit, onFailure: (Throwable) -> Unit) {
+    fun postAsset(asset: UpdateAsset?, onSuccess: (Boolean) -> Unit, onFailure: (Throwable) -> Unit) {
 
 
         val url = URL("http://10.0.2.2:5232/api/Asset/updateasset")

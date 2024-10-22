@@ -31,7 +31,11 @@ class httpgetassetforedit {
                 reader.close()
                 val jsonObject = JSONObject(jsonData)
 
-
+                val imagesJsonArray = jsonObject.getJSONArray("images")
+                val imagesList = mutableListOf<String>()
+                for (i in 0 until imagesJsonArray.length()) {
+                    imagesList.add(imagesJsonArray.getString(i))
+                }
 
                 val asset = EditAsset(
                     jsonObject.getInt("id"),
@@ -45,7 +49,7 @@ class httpgetassetforedit {
                     jsonObject.getString("departmentName"),
                     jsonObject.getString("assetGroupName"),
                     jsonObject.getString("location"),
-                    jsonObject.getString("images"),
+                    imagesList
                 )
                 return asset
             }
