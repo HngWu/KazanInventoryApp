@@ -101,6 +101,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -1289,7 +1290,7 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
     val httpgetassets = remember { httpgetassets() }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-
+    var showErrorMessage by remember { mutableStateOf(false) }
 
     fun filterAssets() {
         if (((searchQuery.isEmpty() || searchQuery.length < 3) && selectedAssetGroup.isEmpty() && selectedDepartment.isEmpty() && startDate.isEmpty() && endDate.isEmpty())) {
@@ -1326,7 +1327,10 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
 
     }
 
-
+    if (showErrorMessage)
+    {
+        Toast.makeText(LocalContext.current, "End date cannot be before start date", Toast.LENGTH_SHORT).show()
+    }
 
 
     Column(
@@ -1371,8 +1375,15 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
 
                 }
                 DatePickerDocked("endDate", endDate, endDate) {
+                    var previousEndDate = endDate
                     endDate = it
-                    filterAssets()
+                    if (endDate >= startDate) {
+                        filterAssets()
+                    } else {
+                        showErrorMessage = true
+                        endDate = previousEndDate
+                        // Handle the case where end date is before start date
+                    }
                 }
             }
             Row(
@@ -1445,6 +1456,7 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
             )
 
             Spacer(modifier = Modifier.height(10.dp))
+            Toast.LENGTH_SHORT
             FloatingActionButton(
                 onClick = {
                     /* TODO: Add action here */
@@ -1474,7 +1486,8 @@ fun AssetCard(asset: Asset, navController: NavController, onLandScape: (String) 
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(text = asset.AssetName, modifier = Modifier.weight(1f))
-            Text(text = asset.AssetSN, modifier = Modifier.weight(1f))
+            Text(text = asset.AssetSN, color = Color.Red ,modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.width(50.dp))
             IconButton(onClick = {
                 navController.navigate("EditAssets/${asset.ID}")
             }) {
