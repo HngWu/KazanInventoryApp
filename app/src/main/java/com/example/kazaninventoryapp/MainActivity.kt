@@ -98,10 +98,12 @@ import kotlinx.coroutines.launch
 import android.util.Base64
 import android.widget.Toast
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -113,16 +115,15 @@ import com.example.kazaninventoryapp.httpservice.httpgetassetforedit
 import com.example.kazaninventoryapp.httpservice.httpgettransferhistory
 import com.example.kazaninventoryapp.httpservice.httppostupdatedasset
 import com.example.kazaninventoryapp.httpservice.httptransferassets
+import kotlinx.coroutines.InternalCoroutinesApi
 import java.io.FileOutputStream
 import java.io.IOException
 import kotlin.random.Random
+import kotlinx.coroutines.Delay as Delay1
 
 
-//TODO 1: Implement the clear button for the search bar correctly by clearing the search query
-//TODO 2: Implement the landscape mode for the app where change in orientation does not affect the filters
-//TODO 3: Implement the generation of the new asset serial number when transferring an asset correctly
-//TODO 4: Implement the snackbar for the app
-//TODO 5: Implement display of multiple images correctly
+
+//TODO 6: Implement If the asset has been previously located in the selected destination department, the same serial number should be assigned to this field and no new serial numbers would need to be generated.
 
 @Suppress("NAME_SHADOWING")
 class MainActivity : ComponentActivity() {
@@ -161,58 +162,83 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-
+        val colorScheme = lightColorScheme(
+            primary = Color(0xFF005CB9),
+            onPrimary = Color.White,
+            // Add other color customizations if needed
+        )
 
         setContent {
-            val navController = rememberNavController()
-            NavHost(navController, "Assets") {
-                composable("Assets") { AssetsScreen(navController, assetChangeTrigger) }
-                composable("RegisterAssets") {
-                    RegisterAssets(
-                        navController,
-                        context = applicationContext
-                    )
-                }
-                composable(
-                    "TransferAsset/{assetId}",
-                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
-                ) { backStackEntry ->
-                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
-                    TransferAssetForm(navController, assetId, context = applicationContext) {
-                        assetChangeTrigger.value = !assetChangeTrigger.value
-                    }
-                }
-                composable(
-                    "EditAssets/{assetId}",
-                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
-                ) { backStackEntry ->
-                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
-                    EditAssets(navController, context = applicationContext, assetId = assetId) {
-                        assetChangeTrigger.value = !assetChangeTrigger.value
+            MaterialTheme(
+                colorScheme = colorScheme,
+                typography = androidx.compose.material3.Typography(),
+                content = {
+                    val navController = rememberNavController()
+
+
+
+                    NavHost(navController, "Assets") {
+                        composable("Assets") { AssetsScreen(navController, assetChangeTrigger) }
+                        composable("RegisterAssets") {
+                            RegisterAssets(
+                                navController,
+                                context = applicationContext
+                            )
+                        }
+                        composable(
+                            "TransferAsset/{assetId}",
+                            arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                        ) { backStackEntry ->
+                            val assetId =
+                                backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                            TransferAssetForm(
+                                navController,
+                                assetId,
+                                context = applicationContext
+                            ) {
+                                assetChangeTrigger.value = !assetChangeTrigger.value
+                            }
+                        }
+                        composable(
+                            "EditAssets/{assetId}",
+                            arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                        ) { backStackEntry ->
+                            val assetId =
+                                backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                            EditAssets(
+                                navController,
+                                context = applicationContext,
+                                assetId = assetId
+                            ) {
+                                assetChangeTrigger.value = !assetChangeTrigger.value
+
+                            }
+                        }
+                        composable(
+                            "TransferHistory/{assetId}",
+                            arguments = listOf(navArgument("assetId") { type = NavType.IntType })
+                        ) { backStackEntry ->
+                            val assetId =
+                                backStackEntry.arguments?.getInt("assetId") ?: return@composable
+                            val httpgettransferhistory = remember { httpgettransferhistory() }
+                            val transferHistory =
+                                httpgettransferhistory.GetHistory(assetId) // Implement this function to fetch transfer history
+                            TransferHistoryScreen(navController, assetId, transferHistory)
+                        }
 
                     }
-                }
-                composable(
-                    "TransferHistory/{assetId}",
-                    arguments = listOf(navArgument("assetId") { type = NavType.IntType })
-                ) { backStackEntry ->
-                    val assetId = backStackEntry.arguments?.getInt("assetId") ?: return@composable
-                    val httpgettransferhistory = remember { httpgettransferhistory() }
-                    val transferHistory =
-                        httpgettransferhistory.GetHistory(assetId) // Implement this function to fetch transfer history
-                    TransferHistoryScreen(navController, assetId, transferHistory)
-                }
 
-            }
+                    requestCameraPermission()
 
-            requestCameraPermission()
-
+                })
         }
 
 
     }
 
 
+    @SuppressLint("CoroutineCreationDuringComposition")
+    @OptIn(InternalCoroutinesApi::class)
     @Composable
     fun TransferHistoryScreen(
         navController: NavController,
@@ -221,8 +247,8 @@ class MainActivity : ComponentActivity() {
     ) {
         var transferHistory by remember { mutableStateOf(transferHistory) }
         var isLoading by remember { mutableStateOf(true) }
-
-
+        var backToHomePage = remember { mutableStateOf(false) }
+        var showMessage by remember { mutableStateOf(false) }
 
         LaunchedEffect(Unit) {
             withContext(Dispatchers.IO) {
@@ -230,7 +256,20 @@ class MainActivity : ComponentActivity() {
                 val fetchedTransferHistory = httpgettransferhistory.GetHistory(assetId)
                 transferHistory = fetchedTransferHistory
                 isLoading = false
-
+                if (fetchedTransferHistory.isNullOrEmpty())
+                {
+                    backToHomePage.value = true
+                    showMessage = true
+                }
+            }
+        }
+        if (backToHomePage.value) {
+            if (showMessage) {
+                Toast.makeText(LocalContext.current, "No recent transfers in the last twelve months.", Toast.LENGTH_SHORT).show()
+                showMessage = false
+            }
+            LaunchedEffect(Unit) {
+                navController.navigate("Assets")
             }
         }
 
@@ -265,8 +304,8 @@ class MainActivity : ComponentActivity() {
                             verticalArrangement = Arrangement.Top
                         ) {
                             Text("Transfer Date: ${record?.transferDate}")
-                            Text("Old Department: ${record?.newDepartment}")
-                            Text("New Department: ${record?.oldDepartment}")
+                            Text("Old Department: ${record?.oldDepartment}")
+                            Text("New Department: ${record?.newDepartment}")
                             Text("Old Asset SN: ${record?.fromAssetSn}")
                             Text("New Asset SN: ${record?.toAssetSn}")
                             Spacer(modifier = Modifier.height(8.dp))
@@ -323,6 +362,18 @@ class MainActivity : ComponentActivity() {
         var lastNumber by remember { mutableStateOf(0) }
         var departmentPart by remember { mutableStateOf("") }
         var assetGroupPart by remember { mutableStateOf("") }
+        var showLocation by remember { mutableStateOf(false) }
+        var transferHistory by remember { mutableStateOf(MutableList<TransferHistory?>(0) { null }) }
+
+
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) {
+                val httpgettransferhistory = httpgettransferhistory()
+                val fetchedTransferHistory = httpgettransferhistory.GetHistory(assetId)
+                transferHistory = fetchedTransferHistory?.toMutableList() ?: mutableListOf()
+
+            }
+        }
 
 
         fun generateAssetSN(departmentId: Int, assetGroup: String): String {
@@ -351,6 +402,14 @@ class MainActivity : ComponentActivity() {
                 uniquePart = newNumber.toString().padStart(4, '0')
                 newAssetSN = "$departmentPart/$assetGroupPart/$uniquePart"
             }
+
+            if (transferHistory.isNotEmpty()) {
+                val matchingTransfer = transferHistory.find { it?.fromAssetSn?.startsWith("$departmentPart") == true }
+                if (matchingTransfer != null) {
+                    return matchingTransfer.fromAssetSn
+                }
+            }
+
 
             return "$departmentPart/$assetGroupPart/$uniquePart"
         }
@@ -382,6 +441,8 @@ class MainActivity : ComponentActivity() {
                         if (locations != null) {
                             locationList = locations
                         }
+                        showLocation = true
+                        destinationLocation = ""
                     }
                 }
             }
@@ -439,9 +500,14 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Destination Location drop-down
-                DropDownMenu(locationList, "Destination Location", destinationLocation, 200) {selectedItem->
-                    destinationLocation = selectedItem
+                if (showLocation)
+                {
+                    DropDownMenu(locationList, "Destination Location", destinationLocation, 200) {selectedItem->
+                        destinationLocation = selectedItem
+                    }
                 }
+
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Display new asset serial number
@@ -525,6 +591,7 @@ class MainActivity : ComponentActivity() {
                 )
             )
         }
+        var showLocation by remember { mutableStateOf(false) }
         var lastNumber by remember { mutableStateOf(0) }
         var departmentPart by remember { mutableStateOf("") }
         var assetGroupPart by remember { mutableStateOf("") }
@@ -581,9 +648,12 @@ class MainActivity : ComponentActivity() {
                         locationList = locations
                     }
                     getLocation = false
+                    showLocation = true
                 }
             }
         }
+
+
 
         fun generateAssetSN(departmentId: Int, assetGroup: String): String {
             val assetgroupDict = mapOf(
@@ -655,11 +725,16 @@ class MainActivity : ComponentActivity() {
                     departmentList, "Department", selectedItem = department, width = 200
                 ) {
                     department = it
+                    location = ""
                     getLocation = true
                 }
 
-                DropDownMenu(locationList, "Location", selectedItem = location, width = 200) {
-                    location = it
+                if (showLocation)
+                {
+                    DropDownMenu(locationList, "Location", selectedItem = location, width = 200) {
+                        location = it
+                    }
+
                 }
 
             }
@@ -723,7 +798,7 @@ class MainActivity : ComponentActivity() {
                         Text("Select Images")
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Button(onClick = {
                         try {
@@ -742,6 +817,7 @@ class MainActivity : ComponentActivity() {
 
 
                 Spacer(modifier = Modifier.height(16.dp))
+                Toast.LENGTH_SHORT
                 Row(
                     horizontalArrangement = Arrangement.Absolute.Right,
                     verticalAlignment = Alignment.CenterVertically,
@@ -753,7 +829,6 @@ class MainActivity : ComponentActivity() {
                         Text("Cancel")
                     }
                     Spacer(modifier = Modifier.width(10.dp))
-                    Toast.LENGTH_SHORT
                     Button(onClick = {
                         try {
                             var imageByteArrays = imageUris.mapNotNull { uri ->
@@ -795,13 +870,15 @@ class MainActivity : ComponentActivity() {
                                     },
                                     {
                                         Log.i("kilo", "Asset post failed")
-                                        Toast.makeText(context, "Asset registration failed", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "A similar asset name is found in the database / server is down", Toast.LENGTH_SHORT).show()
                                     }
 
                                 )
                             }
                         }catch (e: Exception){
                             Log.d("kilo", "Error: ${e.message}")
+                            Toast.makeText(context, "Please fill in all the details", Toast.LENGTH_SHORT).show()
+
                             e.printStackTrace()
                         }
 
@@ -923,21 +1000,17 @@ class MainActivity : ComponentActivity() {
         }
 
 
-        fun base64ToBitmap(base64String: String): Bitmap? {
-            // Decode the Base64 string into a byte array
-            return try {
-                val decodedBytes = Base64.decode(base64String, Base64.DEFAULT)
-                BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-            } catch (e: Exception) {
-                Log.e("ImageError", "Error decoding base64 image: ${e.message}")
-                null
-            }
-
-        }
         LaunchedEffect(Unit) {
 
             withContext(Dispatchers.IO)
             {
+                val httpgetemployees = httpgetemployees()
+                val employees = httpgetemployees.getEmployees()
+                if (employees != null) {
+                    employeeList = employees
+                }
+
+
                 val httpgetassetforedit = httpgetassetforedit()
                 val asset = httpgetassetforedit.getAssetForEdit(assetId)
                 if (asset != null) {
@@ -950,7 +1023,7 @@ class MainActivity : ComponentActivity() {
                     expiredWarranty = asset.WarrantyDate
                     assetSN = asset.AssetSN
                     uniquePart = asset.AssetSN.split("/")[2]
-
+                    accountableParty = employeeList.find { it.ID == asset.EmployeeID }?.FirstName ?: ""
                 }
 
                 if (asset?.images.isNullOrEmpty()) {
@@ -967,11 +1040,7 @@ class MainActivity : ComponentActivity() {
 
 
 
-                val httpgetemployees = httpgetemployees()
-                val employees = httpgetemployees.getEmployees()
-                if (employees != null) {
-                    employeeList = employees
-                }
+
             }
         }
 
@@ -1204,7 +1273,7 @@ class MainActivity : ComponentActivity() {
                                     employeeList.find { it.FirstName == accountableParty }!!.ID,
                                     (initialAsset!!.AssetGroupID),
                                     assetDescription,
-                                    expiredWarranty,
+                                    expiredWarranty ?: null,
                                     base64Images
                                 )
 
@@ -1224,7 +1293,9 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("Assets")
                                     Toast.makeText(context, "Asset updated successfully", Toast.LENGTH_SHORT).show()
                                 },
-                                { Log.i("kilo", "Asset post failed") }
+                                { Log.i("kilo", "Asset post failed")
+                                    Toast.makeText(context, "A similar asset name is found in the database / server is down", Toast.LENGTH_SHORT).show()
+                                }
                             )
                         }
 
@@ -1333,13 +1404,32 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
     }
 
 
+
+
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
 
-
+        Row (
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(10.dp)
+        ){
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Kazan Logo",
+                modifier = Modifier
+                    .size(75.dp)
+                    .padding(10.dp)
+            )
+            Text(
+                text = "Kazan Inventory App",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(10.dp)
+            )
+        }
 
         if (!isLandscape) {
             Row(
@@ -1388,7 +1478,8 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
             }
             Row(
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(2.dp)
             ) {
 
                 OutlinedTextField(
@@ -1401,7 +1492,7 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
 
                     },
                     label = { Text("Search") },
-                    modifier = Modifier.width(300.dp)
+                    modifier = Modifier.width(280.dp)
                 )
 
                 Spacer(
@@ -1464,8 +1555,10 @@ fun AssetsScreen(navController: NavController, assetChangeTrigger: MutableState<
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-            ) {
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+
+                ) {
                 Icon(Icons.Default.Add, contentDescription = "Add")
             }
         }

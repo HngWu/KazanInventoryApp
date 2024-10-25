@@ -13,7 +13,6 @@ data class UpdateAsset(
     val EmployeeID: Int,
     val AssetGroupID: Int,
     val Description: String,
-    val WarrantyDate: String,
+    val WarrantyDate: String?,
     val images: List<String>?
-
 )
